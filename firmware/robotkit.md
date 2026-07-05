@@ -29,13 +29,22 @@ this selection of the nfault is done via a register in the CH32X035
 #### CH32X035
 ##### PD functionality 
 *registers*
-- selected PDO [count]
+- Selected PDO [count]
 - Active PDO [count]
+- Voltage [mV]
 - Minimal voltage [mV]
 - Maximal voltage [mV]
 - Maximal current [mA]
-- number of PDO's [count]
-- number of PPS's [count]
+- Number of PDO's [count]
+- Number of PPS's [count]
+- Reset PD ???
+- PD Status [status bits] 
+    -[0] select error
+    -[1] active error
+    -[2] voltage error
+    -[7] PD connection error
+in case of an faulty operation the error bit is set and no action is taken
+switchin from a fixed PDO to a PPS voltage is copied from PDO, then the voltage can be set.
 ##### Motor control per DRV8845S 
 - control 
     - forward
