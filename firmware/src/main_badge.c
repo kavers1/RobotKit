@@ -120,24 +120,10 @@
 #define SDA_PIN          GPIO_Pin_18
 #define SCL_PORT         GPIOC
 #define SCL_PIN          GPIO_Pin_19
-#define I2C_ADDRESS      (0x50) /* 7-bit slave address; write=0xA0, read=0xA1 */
+#define I2C_ADDRESS      (0x5E) /* 7-bit slave address; write=0x5E, read=0x5F */
 #define I2C_TIMEOUT      (-2)
 #define I2C_TIMEOUT_TICK ((SystemCoreClock / 10) - 1) /* 100 ms timeout for I2C reads */
 #define I2C_SPEED        (400000)
-
-/*
- * Joystick ADC thresholds for converting analog position to digital direction bits.
- * The joystick ADC range is 0–4095 (12-bit).
- *   value > THRESHOLD_TOP    → pushed in positive direction (up / right)
- *   value < THRESHOLD_BOTTOM → pushed in negative direction (down / left)
- *   in between               → centered (no direction bit set)
- *
- * USB voltage threshold: the 5V USB rail is divided by 2 before the ADC.
- * At 5V: (5V/2) / 3.3V * 4095 ≈ 3100. Values > 3000 are treated as "USB present".
- */
-#define JOYSTICK_THRESHOLD_TOP    (3000)
-#define JOYSTICK_THRESHOLD_BOTTOM (1000)
-#define USB_VOLTAGE_THRESHOLD     (3000)
 
 /* TIM3 auto-reload value for a 100 Hz interrupt used for button debounce timing */
 #define TIMER_FREQ ((SystemCoreClock / 10000) - 1)
@@ -427,43 +413,6 @@ static void LCD_PWM_Init(uint16_t arr, uint16_t psc, uint16_t ccp)
 
     TIM_OC4PreloadConfig(LCD_BACKLIGHT_TIM, TIM_OCPreload_Disable);
     TIM_ARRPreloadConfig(LCD_BACKLIGHT_TIM, ENABLE);
-}
-
-/*********************************************************************
- * @fn      LCD_PWM_DMA_Init
- *
- * @brief   Configure DMA to automatically update the LCD backlight PWM duty cycle.
- *
- * This uses the "DMA-driven CCR" trick: TIM1 is configured to request a DMA
- * transfer on each Update event (TIM_DMA_Update). The DMA copies one uint16
- * from 'memadr' (= &state.data.lcd_brightness) directly into TIM1->CH4CVR.
- * Because DMA_Mode_Circular is used, this repeats every timer period, so any
- * change to state.data.lcd_brightness takes effect within one PWM period — no
- * interrupt or manual register write needed.
- *
- * @param memadr  address of the source value (state.data.lcd_brightness)
- */
-static void LCD_PWM_DMA_Init(u32 memadr)
-{
-    DMA_InitTypeDef DMA_InitStructure = {0};
-
-    RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1, ENABLE);
-
-    DMA_DeInit(LCD_BACKLIGHT_TIM_DMA_CHANNEL);
-    DMA_InitStructure.DMA_PeripheralBaseAddr = (u32)&LCD_BACKLIGHT_TIM_CVR; /* destination: TIM1 CH4 compare reg */
-    DMA_InitStructure.DMA_MemoryBaseAddr = memadr;                          /* source: state.data.lcd_brightness */
-    DMA_InitStructure.DMA_DIR = DMA_DIR_PeripheralDST;
-    DMA_InitStructure.DMA_BufferSize = 1;
-    DMA_InitStructure.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
-    DMA_InitStructure.DMA_MemoryInc = DMA_MemoryInc_Disable;
-    DMA_InitStructure.DMA_PeripheralDataSize = DMA_PeripheralDataSize_HalfWord;
-    DMA_InitStructure.DMA_MemoryDataSize = DMA_MemoryDataSize_HalfWord;
-    DMA_InitStructure.DMA_Mode = DMA_Mode_Circular;
-    DMA_InitStructure.DMA_Priority = DMA_Priority_High;
-    DMA_InitStructure.DMA_M2M = DMA_M2M_Disable;
-    DMA_Init(LCD_BACKLIGHT_TIM_DMA_CHANNEL, &DMA_InitStructure);
-
-    DMA_Cmd(LCD_BACKLIGHT_TIM_DMA_CHANNEL, ENABLE);
 }
 
 /*
@@ -1088,3 +1037,36 @@ void I2C1_ER_IRQHandler(void)
     if (STAR1 & I2C_STAR1_ARLO) I2C1->STAR1 &= ~I2C_STAR1_ARLO;
     if (STAR1 & I2C_STAR1_AF) I2C1->STAR1 &= ~I2C_STAR1_AF;
 }
+// =================================================================
+//
+// stonehenge main
+/* 
+int main() {
+	SystemInit();
+	funGpioInitAll(); // Enable GPIOs
+
+	printf("\n~ ADC Group Injection Example ~\n");
+	printf("Chip ID: %08lX\n", ESIG->UID0);
+	printf("Chip Capacity: %d KB\n", ESIG->CAP);
+
+	// TIM2 CH4 output
+	funPinMode(PWM_PIN, GPIO_CFGLR_OUT_10Mhz_AF_PP);
+	TIM2_ch4_pwm_init();
+
+	// fade blocking loop
+	while(1) {
+		// Fade from 0% to 100%
+		for(int i = 0; i <= period; i += 10) {
+			TIM2->CH4CVR = i;  // Increase brightness
+			Delay_Ms(10);	  // 10ms delay between steps
+		}
+		
+		// Fade from 100% to 0%
+		for(int i = period; i >= 0; i -= 10) {
+			TIM2->CH4CVR = i;  // Decrease brightness
+			Delay_Ms(10);	  // 10ms delay between steps
+		}
+	}
+}
+
+*/
