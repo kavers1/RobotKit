@@ -3,10 +3,10 @@
 ## Design ideas
     - WCH32x035
     - DRV8847 --> DRV8847S
-    - TCA....
-    - PCA....
+    - TCA9555
+    - PCA9685
 
-    - WEDO
+    - WEDO connector 
     - LEGO connector hack
     - Terminal block
 
@@ -15,8 +15,8 @@
 ### I2C slaves
     - WC32X035
     - DRV8847S 2x
-    - TCA
-    - PCA
+    - TCA9555
+    - PCA9685
 
 - to allow multiple DRV8847S we have to set their address. This is done by pulling down the nFault line of the DRV8847S drivers
 - write ... to the DRV8847S on address 0x60, the default address 
@@ -52,14 +52,18 @@ switchin from a fixed PDO to a PPS voltage is copied from PDO, then the voltage 
     - coast
     - stop
 - config
-    - mode bits
+    - nfault input / output
+    - nfault value when in output (write I2C address)
     - sleep
 - status
     - fault flag
 - speed
+    - speed > 0 is forward
+    - speed = 0 is coast
+    - speed < 0 is reverse
 
 if we control the speed of the DRV over the IN1-4 signals, the speed will be controlled by a PWM on the IN1-4 signals 
-Be aware that this control also has to be set in the DRV8847S
+Be aware that this control also has to be set in the DRV8847S mode registers
 
 Speed control can be done by using this PWM. The max voltage to the drives can be controlled by the PD functionality.
 If going above the 5V DC make sure that your hardware has the 5V regulator to provide the power supply to the CH32X035 and other IC's
