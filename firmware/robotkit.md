@@ -3,10 +3,10 @@
 ## Design ideas
     - WCH32x035
     - DRV8847 --> DRV8847S
-    - TCA....
-    - PCA....
+    - TCA9555
+    - PCA9685
 
-    - WEDO
+    - WEDO connector 
     - LEGO connector hack
     - Terminal block
 
@@ -15,8 +15,8 @@
 ### I2C slaves
     - WC32X035
     - DRV8847S 2x
-    - TCA
-    - PCA
+    - TCA9555
+    - PCA9685
 
 - to allow multiple DRV8847S we have to set their address. This is done by pulling down the nFault line of the DRV8847S drivers
 - write ... to the DRV8847S on address 0x60, the default address 
@@ -29,13 +29,22 @@ this selection of the nfault is done via a register in the CH32X035
 #### CH32X035
 ##### PD functionality 
 *registers*
-- selected PDO [count]
+- Selected PDO [count]
 - Active PDO [count]
+- Voltage [mV]
 - Minimal voltage [mV]
 - Maximal voltage [mV]
 - Maximal current [mA]
-- number of PDO's [count]
-- number of PPS's [count]
+- Number of PDO's [count]
+- Number of PPS's [count]
+- Reset PD ???
+- PD Status [status bits] 
+    -[0] select error
+    -[1] active error
+    -[2] voltage error
+    -[7] PD connection error
+in case of an faulty operation the error bit is set and no action is taken
+switchin from a fixed PDO to a PPS voltage is copied from PDO, then the voltage can be set.
 ##### Motor control per DRV8845S 
 - control 
     - forward
@@ -43,14 +52,18 @@ this selection of the nfault is done via a register in the CH32X035
     - coast
     - stop
 - config
-    - mode bits
+    - nfault input / output
+    - nfault value when in output (write I2C address)
     - sleep
 - status
     - fault flag
 - speed
+    - speed > 0 is forward
+    - speed = 0 is coast
+    - speed < 0 is reverse
 
 if we control the speed of the DRV over the IN1-4 signals, the speed will be controlled by a PWM on the IN1-4 signals 
-Be aware that this control also has to be set in the DRV8847S
+Be aware that this control also has to be set in the DRV8847S mode registers
 
 Speed control can be done by using this PWM. The max voltage to the drives can be controlled by the PD functionality.
 If going above the 5V DC make sure that your hardware has the 5V regulator to provide the power supply to the CH32X035 and other IC's
@@ -67,11 +80,23 @@ Also the PWM driver has needs the 5V
 | | 6| NRPDO | number of PDO's | byte |
 | | 7| NRPPS | number of PPS's | byte |
 | | 8| Volt | requested voltage [mV]
-| | 9| Current |  requested max current [mA]
-| |  |
+| | 9| Reset |  reset PD communication
+| |10| Status | PD status bits 
+| |  |        | [0] select error
+| |  |        | [1] active error
+| |  |        | [2] voltage error
+| |  |        | [7] Comm error
+|
 | |11| DRV1CONFIG | DRV1 configuration | byte |
+| |  |            |    [0] mode bits
+| |  |            |    [1] sleep
 | |12| DRV1STATUS | DRV1 status | byte |
+| |  |            | [0] fault bit
 | |13| DRV1CTRL | DRV1 control | byte |
+| |  |          | [0] forward
+| |  |          | [1] reverse
+| |  |          | [2] coast
+| |  |          | [3] brake
 | |14| DRV1SP | DRV1 speeds setpoint | word |
 | |  |
 | |16| DRV2CONFIG | DRV1 configuration | byte |
@@ -80,7 +105,7 @@ Also the PWM driver has needs the 5V
 | |19| DRV2SP | DRV1 speeds setpoint | word |
 ||||||
 ||21|IOEXP| IO expander interrupt ||
-||||||
+||||[0] interrupt status ||
 |DRV8847|0| SLAVE_ADDR | Slave Address RSVD SLAVE_ADDR RW
 ||1| IC1_CON | IC1 Control 
 ||2| IC2_CON | IC2 Control 
@@ -105,12 +130,31 @@ Also the PWM driver has needs the 5V
 |||
 |TCA9555 |    0x20h|default|
 
-| FWD  | IN1 PWM | IN3 PWM |
+|DIRECTION|DRV1| DRV2|
 |------|---------|---------|
+| FWD  | IN1 PWM | IN3 PWM |
 |      | IN2 GND | IN4 GND |
 | REV  | IN1 GND | IN3 GND |
 |      | IN2 PWM | IN4 PWM |
-|BRAKE | IN1 GND | IN3 GND |
-|      | IN2 GND | IN4 GND |
-|COAST | IN1 Z   | IN3 Z   |
-|      | IN2 Z   | IN4 Z   |
+|BRAKE | IN1 VCC | IN3 VCC |
+|      | IN2 VCC | IN4 VCC |
+|COAST | IN1 GND   | IN3 GND   |
+|      | IN2 GND   | IN4 GND   |
+
+DRV1  TIM1 PWM OUT1 en OUIT2
+
+PWM config if counter is less than ccr then out is 1
+if CCR > ARR then out is always 0
+
+|DIRECTION|DRV1| DRV2|
+|------|---------|---------|
+| FWD  | TIM1 CCR1 = speed | TIM1 CCR3 = speed |
+|      | TIM1 CCR2 = ATRLR + 1 | TIM1 CCR4 = ATRLR + 1 |
+| REV  | TIM1 CCR1 = ATRLR + 1| TIM1 CCR3 = ATRLR + 1 |
+|      | TIM1 CCR2 = speed | TIM1 CCR4 = speed |
+|BRAKE | TIM1 CCR1 = 0 | TIM1 CCR3 = 0 |
+|      | TIM1 CCR2 = 0 | TIM1 CCR4 = 0 |
+|COAST | TIM1 CCR1 = ATRLR + 1   | TIM1 CCR3 = ATRLR + 1   |
+|      | TIM1 CCR2 = ARATRLRR + 1   | TIM1 CCR4 = ATRLR + 1   |
+
+similar for DRV3/DRV4 but with TIM2
