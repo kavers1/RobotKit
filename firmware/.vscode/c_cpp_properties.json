@@ -1,0 +1,61 @@
+//
+// !!! WARNING !!! AUTO-GENERATED FILE!
+// PLEASE DO NOT MODIFY IT AND USE "platformio.ini":
+// https://docs.platformio.org/page/projectconf/section_env_build.html#build-flags
+//
+{
+    "configurations": [
+        {
+            "name": "PlatformIO",
+            "includePath": [
+                "C:/Users/verst/OneDrive/Documenten/PlatformIO/Projects/robotkit/robotkit/firmware/src",
+                "C:/Users/verst/.platformio/packages/framework-wch-noneos-sdk/Core/ch32x035",
+                "C:/Users/verst/.platformio/packages/framework-wch-noneos-sdk/Peripheral/ch32x035/inc",
+                "C:/Users/verst/.platformio/packages/framework-wch-noneos-sdk/Peripheral/ch32x035/src",
+                "C:/Users/verst/.platformio/packages/framework-wch-noneos-sdk/Startup",
+                "C:/Users/verst/.platformio/packages/framework-wch-noneos-sdk/System/ch32x035",
+                "C:/Users/verst/.platformio/packages/framework-wch-noneos-sdk/Debug/ch32x035",
+                ""
+            ],
+            "browse": {
+                "limitSymbolsToIncludedHeaders": true,
+                "path": [
+                    "C:/Users/verst/OneDrive/Documenten/PlatformIO/Projects/robotkit/robotkit/firmware/src",
+                    "C:/Users/verst/.platformio/packages/framework-wch-noneos-sdk/Core/ch32x035",
+                    "C:/Users/verst/.platformio/packages/framework-wch-noneos-sdk/Peripheral/ch32x035/inc",
+                    "C:/Users/verst/.platformio/packages/framework-wch-noneos-sdk/Peripheral/ch32x035/src",
+                    "C:/Users/verst/.platformio/packages/framework-wch-noneos-sdk/Startup",
+                    "C:/Users/verst/.platformio/packages/framework-wch-noneos-sdk/System/ch32x035",
+                    "C:/Users/verst/.platformio/packages/framework-wch-noneos-sdk/Debug/ch32x035",
+                    ""
+                ]
+            },
+            "defines": [
+                "PLATFORMIO=60119",
+                "CH32X035G8",
+                "CH32X03X",
+                "CH32X03x",
+                "CH32X035",
+                "DEBUG=2",
+                "VERSION_MAJOR=\"255\"",
+                "VERSION_MINOR=\"255\"",
+                "VERSION_PATCH=\"255\"",
+                "SYSCLK_FREQ_48MHz_HSI=48000000",
+                "SYSCLK_FREQ_48MHZ_HSI=48000000",
+                "__PIO_CPP_SUPPORT__",
+                ""
+            ],
+            "cStandard": "gnu99",
+            "cppStandard": "gnu++17",
+            "compilerPath": "C:/Users/verst/.platformio/packages/toolchain-riscv/bin/riscv-wch-elf-gcc.exe",
+            "compilerArgs": [
+                "-msmall-data-limit=8",
+                "-msave-restore",
+                "-march=rv32imacxw",
+                "-mabi=ilp32",
+                ""
+            ]
+        }
+    ],
+    "version": 4
+}

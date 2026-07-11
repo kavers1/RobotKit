@@ -20,9 +20,9 @@
  *     - Current setpoint of a variable voltage source, if fixed current settings this is equal to its max current
  *
  *   Motor drivers (readable via I2C)
- *     - hardware status of the of the drive and of the commands
+ *     - hardware status of the of the drive and of the commands (NFAULT)
  *   Motor drivers (writeable via I2C)
- *     - drive hardware configuration signals (MODE,SLEEP)
+ *     - drive hardware sleep signals (SLEEP)
  *     - drive control (FWD,REV,BRAKE,COAST)
  *     - drive speed setpoint (PWM signal)
  * 
@@ -48,14 +48,17 @@
 #include "debug.h"
 
 #define USB_MONITOR_PORT        GPIOC // PC3: USB Monitor
+/// TODO check
 #define USB_MONITOR_PIN         GPIO_Pin_3
-#define USB_MONITOR_CHANNEL     ADC_Channel_13
+//#define USB_MONITOR_CHANNEL     ADC_Channel_13
 #define USB_MONITOR_RANK        (3)
 
 
 #define DRV1_PORT               GPIOB       // PB
+#define PWR_ENABLE_PIN          GPIO_Pin_1  //PB1
+#define ADJ_ENABLE_PIN          GPIO_Pin_4  //PB4
 #define DRV1_SLEEP_PIN          GPIO_Pin_7  //PB7
-#define DRV1_FAULT_PIN          GPIO_Pin_6  //PB6
+#define DRV1_NFAULT_PIN         GPIO_Pin_6  //PB6
 #define DRV1_IN1_PIN            GPIO_Pin_9  //PB9
 #define DRV1_IN2_PIN            GPIO_Pin_10 //PB10
 #define DRV1_IN3_PIN            GPIO_Pin_12 //PB12
@@ -63,7 +66,7 @@
 
 #define DRV2_PORT               GPIOA       // PA
 #define DRV2_SLEEP_PIN          GPIO_Pin_4  //PA4
-#define DRV2_FAULT_PIN          GPIO_Pin_5  //PA5
+#define DRV2_NFAULT_PIN         GPIO_Pin_5  //PA5
 #define DRV2_IN1_PIN            GPIO_Pin_0  //PA0
 #define DRV2_IN2_PIN            GPIO_Pin_1  //PA1
 #define DRV2_IN3_PIN            GPIO_Pin_2  //PA2
@@ -124,7 +127,7 @@
 #define DRIVE_RW_OFFSET    (1)  /* offset of Drive1 read write registers*/
 #define DRIVE_SIZE         (6)
 #define DRIVE2_OFFSET      (32) /* byte offset to Drive2 registers*/
-#define RESULT_BUFFER_SIZE (39) /* byte offset of lcd_brightness */
+#define RESULT_BUFFER_SIZE (36) 
 // writeable registers
 #define PD_SELECT          ( PD_OFFSET + 8)
 #define PD_ACTIVE          ( PD_OFFSET + 9)
@@ -135,27 +138,39 @@
 #define DRV1_SPEED         ( DRIVE1_OFFSET + 4)
 #define DRV2_CONFIG        ( DRIVE2_OFFSET + 1)
 #define DRV2_CONTROL       ( DRIVE2_OFFSET + 2)
-#define DRV_SPEED          ( DRIVE1_OFFSET + 4)
+#define DRV2_SPEED         ( DRIVE2_OFFSET + 4)
 
-typedef struct{
+
+typedef struct __attribute__((packed))
+{
+    uint8_t select : 4;
+    uint8_t padding :3;
+    uint8_t enable :1;
+} PDO_select_t ;
+
+typedef struct __attribute__((packed))
+{
     uint8_t fault :1;   // value of the fault pin when not in address mode
-    uint8_t reserved :7;
+    uint8_t reserved :6;
+    uint8_t iomode :1;  // input - output mode of nfault
 } drive_status_t;
 
-typedef struct{
-    uint8_t mode :1;    // mode pin of the DRV
-    uint8_t sleep :1;   // sleep pin of the DRV
-    uint8_t reserved :4;
+typedef struct __attribute__((packed))
+{
     uint8_t fault :1;   // set fault to write address
-    uint8_t address :1; // set fault pin to output to configure the I2C address of the DRV
+    uint8_t reserved :5;
+    uint8_t iomode : 1;
+    uint8_t set_address :1; // set fault pin to output to configure the I2C address of the DRV
 } drive_config_t;
 
-typedef struct{
+typedef struct __attribute__((packed))
+{
     uint8_t forward :1; 
     uint8_t reverse :1;
     uint8_t brake :1;
     uint8_t coast :1;
-    uint8_t reserved :4;
+    uint8_t reserved :3;
+    uint8_t sleep :1;
 } drive_control_t;
 
 
@@ -169,30 +184,53 @@ typedef struct{
  */
 typedef struct __attribute__((packed))
 {
+    uint8_t update_pd_select : 1;   /* set when PD select written via I2C */
+    uint8_t update_pd_active : 1;   /* set when PD actyive written via I2C */
+    uint8_t update_pd_voltage : 1;  /* set when PD voltage written via I2C */
+    uint8_t update_pd_current : 1;  /* set when PD current written via I2C */
+
+    uint8_t update_drv1_config : 1; /* set when Drive1 config written via I2C */
+    uint8_t update_drv1_control : 1;/* set when Drive1 control written via I2C */
+    uint8_t update_drv1_speed : 1;  /* set when Drive1 speed written via I2C */
+    
+    uint8_t update_drv2_config : 1; /* set when Drive2 config written via I2C */
+    uint8_t update_drv2_control : 1;/* set when Drive2 control written via I2C */
+    uint8_t update_drv2_speed : 1;   /* set when Drive2 speed written via I2C */
+
+    uint8_t reserved : 5;           /* reserved for future use */
+    uint8_t slave_first_write:1;    
+    
+} update_flags_t;
+
+ typedef struct __attribute__((packed))
+{
     uint8_t version[3];  
-    uint8_t  ioexpanderstatus;                /* firmware version [major, minor, patch] — READ-ONLY */
+    uint8_t  powerenable;                /* firmware version [major, minor, patch] — READ-ONLY */
     uint8_t  numberpdo;
     uint8_t  numberpps;
     uint16_t minvolt;
     uint16_t maxvolt;
     uint16_t maxcurrent;
     uint8_t  selected;
-    uint8_t  active;
+    PDO_select_t active;
     uint16_t voltage;
     uint16_t current;
     drive_status_t  drv1status;
     drive_config_t  drv1config;
     drive_control_t drv1control;
     uint8_t  drv1padding;
-    uint16_t drv1speed;
+    int16_t  drv1speed;
     uint16_t drv1padding2;
     drive_status_t  drv2status;
     drive_config_t  drv2config;
     drive_control_t drv2control;
     uint8_t  drv2padding;
-    uint16_t drv2speed;
+    int16_t  drv2speed;
     uint16_t drv2padding2;
+    uint16_t drv2padding3;
 } robotkit_data_t;
+
+
 
 /* Compile-time check: struct layout must match RESULT_BUFFER_SIZE exactly */
 _Static_assert(sizeof(robotkit_data_t) == RESULT_BUFFER_SIZE, "raw data and struct size are not aligned!");
@@ -205,18 +243,11 @@ _Static_assert(sizeof(robotkit_data_t) == RESULT_BUFFER_SIZE, "raw data and stru
 ///TODO update flags bekijken
 typedef struct
 {
-    uint8_t flag_update_pd_select : 1;   /* set when PD select written via I2C */
-    uint8_t flag_update_pd_active : 1;   /* set when PD actyive written via I2C */
-    uint8_t flag_update_pd_voltage : 1;  /* set when PD voltage written via I2C */
-    uint8_t flag_update_pd_current : 1;  /* set when PD current written via I2C */
-    uint8_t flag_update_drv1_config : 1; /* set when Drive1 config written via I2C */
-    uint8_t flag_update_drv1_control : 1;/* set when Drive1 control written via I2C */
-    uint8_t flag_update_drv1_speed : 1;  /* set when Drive1 speed written via I2C */
-    uint8_t flag_update_drv2_config : 1; /* set when Drive2 config written via I2C */
-
-    uint8_t flag_update_drv2_control : 1;/* set when Drive2 control written via I2C */
-    uint8_t flag_update_drv_speed : 1;   /* set when Drive2 speed written via I2C */
-    uint8_t reserved : 6;                  /* reserved for future use */
+    union {
+        update_flags_t flags;
+        uint16_t any_update;
+    };
+    
     uint8_t slave_offset;                  /* register offset captured after the most recent ADDR+W. */
     uint8_t slave_position;                /* current read/write cursor, reset to offset on every ADDR (including repeated-START), so write-then-read works without special-casing. */
     
@@ -231,90 +262,61 @@ typedef struct
 static robotkit_state_t state;
 
 
-/*
- * Configure AUX_POWER (PB6), LCD_RESET (PB11), and INT_OUTPUT (PC17) as
- * push-pull GPIO outputs.
- * The main loop drives these pins based on the I2C-writable output flags.
- */
-static void Outputs_Init(void)
+static void drive_Init(void)
 {
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB | RCC_APB2Periph_GPIOC, ENABLE);
+//TODO check next lines
+
+ /* Enable AFIO, GPIO A, B and C clock */
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO | RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOB | RCC_APB2Periph_GPIOC, ENABLE | RCC_APB2Periph_TIM1);
+
 
     GPIO_InitTypeDef GPIO_InitStructure = {0};
 
     /* AUX power and LCD reset are on GPIOB */
-    GPIO_InitStructure.GPIO_Pin = AUX_POWER_PIN | LCD_RESET_PIN | LORA_RESET_PIN;
+    GPIO_InitStructure.GPIO_Pin = DRV1_SLEEP_PIN | DRV1_IN4_PIN | DRV1_IN3_PIN | DRV1_IN2_PIN | DRV1_IN1_PIN ;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
     GPIO_Init(GPIOB, &GPIO_InitStructure);
 
-    GPIO_InitStructure.GPIO_Pin = INT_OUTPUT_PIN;
+    //DRV1_NFAULT_PIN moet input zijn at startup
+    GPIO_InitStructure.GPIO_Pin = DRV1_NFAULT_PIN;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_Init(DRV1_PORT, &GPIO_InitStructure); // GPIOB
+/// TODO init pwm drv1
+
+//TODO check next line
+
+    /* AUX power and LCD reset are on GPIOB */
+    GPIO_InitStructure.GPIO_Pin = DRV2_SLEEP_PIN | DRV2_IN4_PIN | DRV2_IN3_PIN | DRV2_IN2_PIN | DRV2_IN1_PIN ;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_Init(INT_OUTPUT_PORT, &GPIO_InitStructure);
+    GPIO_Init(GPIOB, &GPIO_InitStructure);
+    
+    //DRV2_NFAULT_PIN moet input zijn at startup
+    GPIO_InitStructure.GPIO_Pin = DRV2_NFAULT_PIN;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_Init(DRV2_PORT, &GPIO_InitStructure); // GPIOB
+/// TODO init pwm drv1
 }
 
-/*********************************************************************
- * @fn      Button_Init
- *
- * @brief   Configure all button/charger GPIO inputs and start TIM3 at 100 Hz
- *          for the Button_Scan() debounce state machine.
- *
- * @param   arr - TIM3 auto-reload value (period)
- *          psc - TIM3 prescaler value
- *
- * @return  none
- */
-static void Button_Init(uint16_t arr, uint16_t psc)
+static void power_Init(void)
 {
+
     GPIO_InitTypeDef GPIO_InitStructure = {0};
-    TIM_TimeBaseInitTypeDef TIM_TimeBaseStructure = {0};
-    NVIC_InitTypeDef NVIC_InitStructure = {0};
 
-    /* Enable AFIO, TIM3, GPIO A, B and C clock */
-    RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM3, ENABLE);
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO | RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOB | RCC_APB2Periph_GPIOC, ENABLE);
-
-    /* configure GPIO as inputs */
-    GPIO_InitStructure.GPIO_Pin = CHARGER_CHARGING_PIN;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_Init(CHARGER_CHARGING_PORT, &GPIO_InitStructure); // GPIOA
-
-    GPIO_InitStructure.GPIO_Pin = CHARGER_STANDBY_PIN;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN_FLOATING; // TODO: what should these be?
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_Init(CHARGER_STANDBY_PORT, &GPIO_InitStructure); // GPIOB
-
-    GPIO_InitStructure.GPIO_Pin = BUTTON_X_PIN | BUTTON_A_PIN | BUTTON_B_PIN | BUTTON_Y_PIN;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
+    /* AUX power and LCD reset are on GPIOB */
+    GPIO_InitStructure.GPIO_Pin = PWR_ENABLE_PIN;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
     GPIO_Init(GPIOB, &GPIO_InitStructure);
 
-    GPIO_InitStructure.GPIO_Pin = BUTTON_MENU_PIN;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
+    /// TODO port of adjust enable input
+    GPIO_InitStructure.GPIO_Pin = ADJ_ENABLE_PIN;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPD;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_Init(BUTTON_MENU_PORT, &GPIO_InitStructure); // GPIOC
-
-    /* Initialize Timer3 */
-    TIM_TimeBaseStructure.TIM_Period = arr;
-    TIM_TimeBaseStructure.TIM_Prescaler = psc;
-    TIM_TimeBaseStructure.TIM_ClockDivision = TIM_CKD_DIV1;
-    TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up;
-    TIM_TimeBaseInit(TIM3, &TIM_TimeBaseStructure);
-
-    /* configure timer interrupt */
-    NVIC_InitStructure.NVIC_IRQChannel = TIM3_IRQn;
-    NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 1;
-    NVIC_InitStructure.NVIC_IRQChannelSubPriority = 2;
-    NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
-    NVIC_Init(&NVIC_InitStructure);
-
-    /* enable timer interrupts */
-    TIM_ITConfig(TIM3, TIM_IT_Update, ENABLE);
-
-    /* Enable Timer3 */
-    TIM_Cmd(TIM3, ENABLE);
+    GPIO_Init(GPIOB, &GPIO_InitStructure); // GPIOB
 }
 
 static void IIC_Init(uint32_t bound, uint16_t address)
@@ -393,10 +395,12 @@ static void reset_to_bootloader(void)
 
 static int i2c_pos_is_writable(uint8_t pos)
 {
+
+    /// TODO power enable
     if (pos >= PD_OFFSET + PD_RW_OFFSET && pos < PD_OFFSET + PD_SIZE) return 1;
-    if (pos >= PD_DRIVE1 + DRIVE_RW_OFFSET && pos < DRIVE1_OFFSET + DRIVE_SIZE) return 1;
-    if (pos >= PD_DRIVE2 + DRIVE_RW_OFFSET && pos < DRIVE2_OFFSET + DRIVE_SIZE) return 1;
-     1;
+    if (pos >= DRIVE1_OFFSET + DRIVE_RW_OFFSET && pos < DRIVE1_OFFSET + DRIVE_SIZE) return 1;
+    if (pos >= DRIVE2_OFFSET + DRIVE_RW_OFFSET && pos < DRIVE2_OFFSET + DRIVE_SIZE) return 1;
+     
     return 0;
 }
 
@@ -430,7 +434,7 @@ static void i2c_slave_process(void)
     if (flag1 & I2C_STAR1_ADDR)
     {
         state.slave_position = state.slave_offset;
-        state.flag_slave_first_write = 1;
+        state.flags.slave_first_write = 1;
     }
 
     /* Data register not empty (Receiver) flag */
@@ -441,11 +445,11 @@ static void i2c_slave_process(void)
          * Subsequent payload bytes are read and written if the memory area
          * is writeable.
          */
-        if (state.flag_slave_first_write)
+        if (state.flags.slave_first_write)
         {
             state.slave_offset = byte;
             state.slave_position = byte;
-            state.flag_slave_first_write = 0;
+            state.flags.slave_first_write = 0;
             PRINT("I2C reg: 0x%02x\r\n", byte);
         }
         else
@@ -453,37 +457,37 @@ static void i2c_slave_process(void)
             if (i2c_pos_is_writable(state.slave_position))
             {
                 state.raw_data[state.slave_position] = byte;
-                switch (state.slave_postion)
+                switch (state.slave_position)
                 {
                 case PD_SELECT :
-                    state.flag_update_pd_select = 1;
+                    state.flags.update_pd_select = 1;
                     break;
                 case PD_ACTIVE :
-                    state.flag_update_pd_active = 1;
+                    state.flags.update_pd_active = 1;
                     break;
                 case PD_VOLTAGE + 1 : // last byte of voltage written
-                    state.flag_update_pd_voltage =1;
+                    state.flags.update_pd_voltage =1;
                     break;
                 case PD_CURRENT + 1 : // last byte of current written
-                    state.flag_update_pd_current =1;
+                    state.flags.update_pd_current =1;
                     break;
                 case DRV1_CONFIG :
-                    state.flag_update_drv1_config = 1;
+                    state.flags.update_drv1_config = 1;
                     break;
                 case DRV1_CONTROL :
-                    state.flag_update_drv1_control = 1;
+                    state.flags.update_drv1_control = 1;
                     break;
                 case DRV1_SPEED :
-                    state.flag_update_drv1_speed = 1;
+                    state.flags.update_drv1_speed = 1;
                     break;
                 case DRV2_CONFIG :
-                    state.flag_update_drv2_config = 1;
+                    state.flags.update_drv2_config = 1;
                     break;
                 case DRV2_CONTROL :
-                    state.flag_update_drv2_control = 1;
+                    state.flags.update_drv2_control = 1;
                     break;
                 case DRV2_SPEED :
-                    state.flag_update_drv_speed = 1;
+                    state.flags.update_drv2_speed = 1;
                     break;
                 default:
                     break;
@@ -528,146 +532,149 @@ static void i2c_slave_process(void)
 }
 
 void run_Drive1(void){
-    if (state.flag_update_drv1_config == 1){
+    if (state.flags.update_drv1_config == 1){
         /// TODO change config
         /// set mode and sleep signals
         /// reset speed and set control to coast
 
-        // set mode bit
-        if (state.data.drv1mode.mode == 1)
-            GPIO_WriteBit(GPIOB, DRV1_MODE_PIN , Bit_SET);
-        else
-            GPIO_WriteBit(GPIOB, DRV1_MODE_PIN , Bit_RESET);
-        // set sleep bit
-        if (state.data.drv1mode.sleep == 1)
+        if (state.data.drv1control.sleep == 1)
             GPIO_WriteBit(GPIOB, DRV1_SLEEP_PIN , Bit_SET);
         else
             GPIO_WriteBit(GPIOB, DRV1_SLEEP_PIN , Bit_RESET);
         // set fault bit mode to input or output to write I2C address of DRV8847S
-        if (state.data.drv1mode.address == 1){
+        if (state.data.drv1config.set_address == 1){
         /// TODO check init
-            GPIO_InitStructure.GPIO_Pin = DRV1_FAULT_PIN;
+            GPIO_InitStructure.GPIO_Pin = DRV1_NFAULT_PIN;
             GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
             GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
             GPIO_Init(GPIOB, &GPIO_InitStructure);
         }
         else {
-            GPIO_InitStructure.GPIO_Pin = DRV1_FAULT_PIN;
+            GPIO_InitStructure.GPIO_Pin = DRV1_NFAULT_PIN;
             GPIO_InitStructure.GPIO_Mode = GPIO_Mode_OPD;
             GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
             GPIO_Init(GPIOB, &GPIO_InitStructure);
         }
 
-        if (state.data.drv1mode.fault == 1)
-            GPIO_WriteBit(GPIOB, DRV1_FAULT_PIN , Bit_SET);
+        if (state.data.drv1status.fault == 1)
+            GPIO_WriteBit(GPIOB, DRV1_NFAULT_PIN , Bit_SET);
         else
-            GPIO_WriteBit(GPIOB, DRV1_FAULT_PIN , Bit_RESET);
+            GPIO_WriteBit(GPIOB, DRV1_NFAULT_PIN , Bit_RESET);
         
 
-        state.flag_update_drv1_config = 0;
+        state.flags.update_drv1_config = 0;
     }
-    if (state.flag_update_drv1_control == 1){
+    if (state.flags.update_drv1_control == 1){
         /// TODO change control
         /// if going from fwd to rev go over break for xxx ms and reset speed
         /// going from brake or coast to FWD or REV is ok 
         /// clear change flag if not waiting
-        if (state.data.drv1_config & 0x01 == 1) { // brake
-            state.data.drv1_speed = 0;
+        if (state.data.drv1control.brake == 1) { // brake
+            state.data.drv1speed = 0;
             Brake(1);
         }
         else {
-            if (state.data.drv1_config & 0x02 == 1) { // coast
-                state.data.drv1_speed = 0;
-            
+            if (state.data.drv1control.coast == 1) { // coast
+                state.data.drv1speed = 0;
             }
-            setSpeed(state.data.drv1_speed,1)
+            setSpeed(state.data.drv1speed,1);
         }
-        state.flag_update_drv1_control = 0;
+        state.flags.update_drv1_control = 0;
     }
-    if (state.flag_update_drv1_speed == 1){
+    if (state.flags.update_drv1_speed == 1){
         /// TODO adjust speed ie adjust PWM CCR register
         /// if sign change go from REV <--> FWD
         /// if just speed adjustment clear change flag
-        setSpeed(state.data.drv1_speed,1)
+        setSpeed(state.data.drv1speed,1);
 
-        state.flag_update_drv1_speed = 0;
+        state.flags.update_drv1_speed = 0;
     }
+    /// TODO
     /// read fault bit
+
+
 }
 
 void run_Drive2(void){
-    if (state.flag_update_drv2_config == 1){
+    if (state.flags.update_drv2_config == 1){
         /// TODO change config
         /// set mode and sleep signals
         /// reset speed and set control to coast
-        state.flag_update_drv2_config = 0;
+        state.flags.update_drv2_config = 0;
     }
-    if (state.flag_update_drv2_control == 1){
+    if (state.flags.update_drv2_control == 1){
         /// TODO change control
         /// if going from fwd to rev go over break for xxx ms and reset speed
         /// going from brake or coast to FWD or REV is ok 
         /// clear change flag if not waiting
-        state.flag_update_drv2_control = 0;
+        state.flags.update_drv2_control = 0;
     }
-    if (state.flag_update_drv2_speed == 1){
+    if (state.flags.update_drv2_speed == 1){
         /// TODO adjust speed ie adjust PWM CCR register
         /// if sign change go from REV <--> FWD
         /// if just speed adjustment clear change flag
     }    
 }
 
-void run_IOexpander (void){
-    /// TODO read interupt input and write to register
-}
-
 int run_PD(void){
 /// TODO check if we are connected else return
     
-    if (state.flag_update_pd_select == 1){
+    if (state.flags.update_pd_select == 1){
         // limit the value range of select and active
-        if (state.data.selected > PD_getPDONum() || state.data.selected <= 0) state.data.selected = 1      
-        state.data.maxvoltage = PD_getMaxVoltage(state.data.selected) ;
-        state.data.minvoltage = PD_getMinVoltage(state.data.selected) ;
-        state.data.mincurrent = PD_getMinCurrent(state.data.selected);
+        if (state.data.selected > PD_getPDONum() || state.data.selected <= 0) state.data.selected = 1 ;     
+        state.data.maxvolt = PD_getMaxVoltage(state.data.selected) ;
+        state.data.minvolt = PD_getMinVoltage(state.data.selected) ;
+        state.data.maxcurrent = PD_getMinCurrent(state.data.selected);
         /// TODO  update capabilties and set registers
         printSourceCap();
-        state.flag_pd_select = 0;
+        state.flags.update_pd_select = 0;
     }
-    if (state.flag_update_pd_active == 1){
+    if (state.flags.update_pd_active == 1){
         // limit the value range of select and active
-        if (state.data.active > PD_getPDONum() || state.data.active <= 0) state.data.active = lstActive;
-        if(state.data.active <= PD_getFixedNum()) {
+        if (state.data.active.select > PD_getPDONum() || state.data.active.select <= 0) state.data.active.select = lstActive;
+        if(state.data.active.select <= PD_getFixedNum()) {
             if(! PD_setPDO(state.data.active, PD_getPDOVoltage(state.data.active)))
                 setActive(lstActive); // if not succesfull revert to last PDO
         }
         else { // it is a PPS set voltage
             PD_negotiate();
-            if(!PD_setPDO(state.data.active, state.data.voltage)) {
-            state.data.active = lstActive; // if not succesfull revert to last PDO
+            if(!PD_setPDO(state.data.active.select, state.data.voltage)) {
+            state.data.active.select = lstActive; // if not succesfull revert to last PDO
             }
         }
-        state.flag_update_pd_active = 0;
+        // write enable bit to output
+        if (state.data.active.enable){
+            GPIO_WriteBit(GPIOB, PWR_ENABLE_PIN, Bit_SET);
+        }
+        else
+        {
+            GPIO_WriteBit(GPIOB, PWR_ENABLE_PIN, Bit_RESET);
+        }
+
+        state.flags.update_pd_active = 0;
         state.data.voltage = PD_getVoltage();
     }
-    if (state.flag_update_pd_voltage == 1){
+    if (state.flags.update_pd_voltage == 1){
 
         PD_setVoltage(state.data.active, state.data.voltage);
-        state.flag_update_pd_voltage = 0;
+        state.flags.update_pd_voltage = 0;
     }
     PD_negotiate();
-  }
 }
+
 
 
 /* main */
 int main(void)
 {
     /* Zero-initialise all state data and flags before touching any hardware */
-    memset(&state, 0, sizeof(addon_state_t));
+    memset(&state, 0, sizeof(robotkit_state_t));
 
     /* Embed the firmware version (injected by the build system as preprocessor
      * strings) into the I2C register map so the ESP32 can read it back.
      */
+
+
     char version_major[] = VERSION_MAJOR;
     char version_minor[] = VERSION_MINOR;
     char version_patch[] = VERSION_PATCH;
@@ -684,19 +691,7 @@ int main(void)
     SystemCoreClockUpdate();
     Delay_Init();
 
-    /* configure the output GPIO */
-    Outputs_Init();
-
-    /* Perform a hard reset of the LCD controller and Lora module early at boot:
-     *   Pull RESET low → wait 120 ms → pull high again.
-     *   This satisfies the reset timing requirements of ST7789v SPI LCD modules
-     *   and the SX1262
-     */
-    GPIO_WriteBit(GPIOB, LCD_RESET_PIN | LORA_RESET_PIN, Bit_SET);
-    Delay_Ms(10);
-    GPIO_WriteBit(GPIOB, LCD_RESET_PIN | LORA_RESET_PIN, Bit_RESET);
-    Delay_Ms(120);
-    GPIO_WriteBit(GPIOB, LCD_RESET_PIN | LORA_RESET_PIN, Bit_SET);
+    // TODO do we have to remap the serial ????
 
 #if (DEBUG)
     USART_Printf_Init(115200);
@@ -712,69 +707,43 @@ int main(void)
 
     /* configure the I2C pins and interrupts */
     IIC_Init(I2C_SPEED, I2C_ADDRESS); // maps SWD lines to I2C
-    /* configure the GPIO inputs and debounce timer */
-    Button_Init(1, TIMER_FREQ);
+    /* init drives */
 
-    /* configure the analog input reading using DMA:
-     *   ADC1 scans all ADC_CHANNELS in continuous/circular mode;
-     *   DMA writes results directly into state.data.adc_channels[] without CPU.
-     */
-    ADC_MultiChannel_Init();
-    DMA_Tx_Init(ADC_DMA_CHANNEL, (u32)&ADC1->RDATAR, (u32)state.data.adc_channels, ADC_CHANNELS);
-    DMA_Cmd(ADC_DMA_CHANNEL, ENABLE);
-    ADC_SoftwareStartConvCmd(ADC1, ENABLE);
+    /* init power */
 
-    /* configure the LCD backlight PWM output using DMA:
-     *   The timer Update event triggers DMA to copy state.data.lcd_brightness
-     *   into the compare register (CCR), so the duty cycle tracks the variable
-     *   automatically without any extra CPU writes.
-     */
-    LCD_PWM_Init(100, TIMER_FREQ, state.data.lcd_brightness);
-    LCD_PWM_DMA_Init((u32)&state.data.lcd_brightness);
-    TIM_DMACmd(LCD_BACKLIGHT_TIM, TIM_DMA_Update, ENABLE);
-    TIM_Cmd(LCD_BACKLIGHT_TIM, ENABLE);
-    TIM_CtrlPWMOutputs(LCD_BACKLIGHT_TIM, ENABLE);
+    /* init PD */
 
-    /* configure the Debug LED PWM output using DMA (same mechanism as above) */
-    LED_PWM_Init(100, TIMER_FREQ, state.data.led_brightness);
-    LED_PWM_DMA_Init((u32)&state.data.led_brightness);
-    TIM_DMACmd(DEBUG_LED_TIM, TIM_DMA_Update, ENABLE);
-    TIM_Cmd(DEBUG_LED_TIM, ENABLE);
-    TIM_CtrlPWMOutputs(DEBUG_LED_TIM, ENABLE);
+    /* init local IO */
 
-    /* Apply safe defaults: enable AUX power, release LCD reset,
-     * release lora reset, set 50% brightness
-     */
-
-    PRINT("Expander Init done\r\n");
+    PRINT("Robotkit Init done\r\n");
 
     /* Main event loop — all heavy lifting is done in ISRs and DMA;
      * the loop only reacts to flags set by those background mechanisms.
      */
     while (1)
     {
-        /* Halfway through the debounce window (50 ms): deassert INT_OUTPUT */
-        if (state.flag_button_scan_halfway)
-        {
-            state.flag_button_scan_halfway = 0;
-            GPIO_WriteBit(INT_OUTPUT_PORT, INT_OUTPUT_PIN, Bit_RESET);
-        }
+        /// TODO run logic 
+        /*
+        since all changes to registers are triggered by receiving I2C register 
+        it is all driven by the I2C interrupts and actions.
 
-        /* Debounce complete and state changed: assert INT_OUTPUT to tell the
-         * ESP32 to issue an I2C read and fetch the new inputs register.
-         */
-        if (state.flag_button_state_changed)
-        {
-            state.flag_button_state_changed = 0;
-            GPIO_WriteBit(INT_OUTPUT_PORT, INT_OUTPUT_PIN, Bit_SET);
-        }
+        check state flags and execute the appropriate action
 
+        keep PD communication alive.
+        */
+        
+        run_Drive1();
+        run_Drive2();
+        run_Power();
+        run_PD();
+        Delay_Ms(10);
+        
         /* I2C master wrote a new value to the outputs register: apply it now.
          * Also handles the reboot-to-bootloader command if that bit is set.
          */
-        if (state.flag_update_outputs)
+        /*if (state.flags.update_outputs)
         {
-            state.flag_update_outputs = 0;
+            state.flags.update_outputs = 0;
             GPIO_WriteBit(AUX_POWER_PORT, AUX_POWER_PIN, state.data.aux_power ? Bit_SET : Bit_RESET);
             GPIO_WriteBit(LCD_RESET_PORT, LCD_RESET_PIN, state.data.lcd_reset ? Bit_SET : Bit_RESET);
             GPIO_WriteBit(LORA_RESET_PORT, LORA_RESET_PIN, state.data.lora_reset ? Bit_SET : Bit_RESET);
@@ -790,15 +759,15 @@ int main(void)
                 PRINT("Remap SWD trigger\r\n");
                 Delay_Ms(100);
                 /* disable I2C interrupts */
-                I2C_ITConfig(I2C1, I2C_IT_EVT | I2C_IT_ERR | I2C_IT_BUF, DISABLE);
+        /*        I2C_ITConfig(I2C1, I2C_IT_EVT | I2C_IT_ERR | I2C_IT_BUF, DISABLE);
 
                 /* disable I2C1 */
-                I2C_Cmd(I2C1, DISABLE);
+        /*        I2C_Cmd(I2C1, DISABLE);
 
                 /* Re-enable DIO (SWD) interface on these pins */
-                GPIO_PinRemapConfig(GPIO_Remap_SWJ_Disable, DISABLE);
+        /*        GPIO_PinRemapConfig(GPIO_Remap_SWJ_Disable, DISABLE);
             }
-        }
+        }*/
     }
 }
 

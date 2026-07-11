@@ -86,7 +86,6 @@ Also the PWM driver has needs the 5V
 | |  |        | [1] active error
 | |  |        | [2] voltage error
 | |  |        | [7] Comm error
-|
 | |11| DRV1CONFIG | DRV1 configuration | byte |
 | |  |            |    [0] mode bits
 | |  |            |    [1] sleep
