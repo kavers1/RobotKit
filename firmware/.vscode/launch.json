@@ -19,7 +19,7 @@
             "svdPath": "C:/Users/verst/.platformio/platforms/ch32v/misc/svd/CH32X035xx.svd",
             "preLaunchTask": {
                 "type": "PlatformIO",
-                "task": "Pre-Debug"
+                "task": "Pre-Debug (debug)"
             }
         },
         {

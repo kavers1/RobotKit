@@ -21,6 +21,7 @@
 // PD_getVoltage()          Get active voltage
 // PD_getCurrent()          Get active max current
 //
+// copied from :
 // Reference:               https://github.com/openwch/ch32x035
 // 2023 by Stefan Wagner:   https://github.com/wagiminator
 
@@ -31,81 +32,11 @@ extern "C" {
 #endif
 
 #include "config.h"
-#include <ch32x035.h>
-#include <ch32x035_usbpd.h>
 #include "usbpd.h"
-
-// ===================================================================================
-// System Options (set "1" to activate)
-// ===================================================================================
-#define SYS_CLK_INIT      1         // 1: init system clock on startup
-#define SYS_TICK_INIT     1         // 1: init and start SYSTICK on startup
-#define SYS_GPIO_EN       1         // 1: enable GPIO ports on startup
-#define SYS_CLEAR_BSS     1         // 1: clear uninitialized variables
-#define SYS_USE_VECTORS   1         // 1: create interrupt vector table
-// ===================================================================================
-// Sytem Clock Defines
-// ===================================================================================
-// Set system clock frequency
-#ifndef F_CPU
-  #define F_CPU           48000000   //48 Mhz if not otherwise defined
-#endif
-
-// Calculate system clock settings
-#if   F_CPU ==  48000000
-  #define SYS_CLK_DIV     RCC_HPRE_DIV1
-#elif F_CPU ==  24000000
-  #define SYS_CLK_DIV     RCC_HPRE_DIV2
-#elif F_CPU ==  16000000
-  #define SYS_CLK_DIV     RCC_HPRE_DIV3
-#elif F_CPU ==  12000000
-  #define SYS_CLK_DIV     RCC_HPRE_DIV4
-#elif F_CPU ==   9600000
-  #define SYS_CLK_DIV     RCC_HPRE_DIV5
-#elif F_CPU ==   8000000
-  #define SYS_CLK_DIV     RCC_HPRE_DIV6
-#elif F_CPU ==   6000000
-  #define SYS_CLK_DIV     RCC_HPRE_DIV8
-#elif F_CPU ==   3000000
-  #define SYS_CLK_DIV     RCC_HPRE_DIV16
-#elif F_CPU ==   1500000
-  #define SYS_CLK_DIV     RCC_HPRE_DIV32
-#elif F_CPU ==    750000
-  #define SYS_CLK_DIV     RCC_HPRE_DIV64
-#elif F_CPU ==    375000
-  #define SYS_CLK_DIV     RCC_HPRE_DIV128
-#elif F_CPU ==    187500
-  #define SYS_CLK_DIV     RCC_HPRE_DIV256
-#else
-  #warning Unsupported system clock frequency, using internal 8 MHz
-  #define SYS_CLK_DIV     RCC_HPRE_DIV6
-  #undef  F_CPU
-  #define F_CPU           8000000
-#endif
-
 
 // ===================================================================================
 // Parameters and Checks
 // ===================================================================================
-#if SYS_USE_VECTORS == 0
-  #error Interrupt vector table must be enabled (SYS_USE_VECTORS in system.h)!
-#endif
-
-#if   F_CPU == 48000000
-  #define USBPD_TMR_TX    (80-1)        // timer value for USB PD BMC TX @ F_CPU=48MHz
-  #define USBPD_TMR_RX    (120-1)       // timer value for USB PD BMC RX @ F_CPU=48MHz
-#elif F_CPU == 24000000
-  #define USBPD_TMR_TX    (40-1)        // timer value for USB PD BMC TX @ F_CPU=24MHz
-  #define USBPD_TMR_RX    (60-1)        // timer value for USB PD BMC RX @ F_CPU=24MHz
-#elif F_CPU == 12000000
-  #define USBPD_TMR_TX    (20-1)        // timer value for USB PD BMC TX @ F_CPU=12MHz
-  #define USBPD_TMR_RX    (30-1)        // timer value for USB PD BMC RX @ F_CPU=12MHz
-#elif F_CPU ==  6000000
-  #define USBPD_TMR_TX    (10-1)        // timer value for USB PD BMC TX @ F_CPU=6MHz
-  #define USBPD_TMR_RX    (15-1)        // timer value for USB PD BMC RX @ F_CPU=6MHz
-#else
-  #error Unsupported system frequency for USBPD!
-#endif
 
 // ===================================================================================
 // Type defines

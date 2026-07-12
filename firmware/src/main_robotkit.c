@@ -41,9 +41,11 @@
  *   - TIM1/TIM2 drive PWM outputs; brightness is updated via DMA on TIM_Update.
  */
 
+//#include "system.h"
 #include <ch32x035.h> /* both X033 and X035 */
 #include <stdlib.h>   /* atoi() */
 #include <string.h>   /* memset() */
+#include <usbpd_sink.h> 
 
 #include "debug.h"
 
@@ -260,7 +262,7 @@ typedef struct
 
 /* global state variable */
 static robotkit_state_t state;
-
+static uint8_t lstActive;
 
 static void drive_Init(void)
 {
@@ -531,11 +533,12 @@ static void i2c_slave_process(void)
     (void)flag2;
 }
 
-void run_Drive1(void){
+static void run_Drive1(void){
     if (state.flags.update_drv1_config == 1){
         /// TODO change config
         /// set mode and sleep signals
         /// reset speed and set control to coast
+         GPIO_InitTypeDef GPIO_InitStructure = {0};
 
         if (state.data.drv1control.sleep == 1)
             GPIO_WriteBit(GPIOB, DRV1_SLEEP_PIN , Bit_SET);
@@ -551,7 +554,7 @@ void run_Drive1(void){
         }
         else {
             GPIO_InitStructure.GPIO_Pin = DRV1_NFAULT_PIN;
-            GPIO_InitStructure.GPIO_Mode = GPIO_Mode_OPD;
+            GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
             GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
             GPIO_Init(GPIOB, &GPIO_InitStructure);
         }
@@ -595,7 +598,7 @@ void run_Drive1(void){
 
 }
 
-void run_Drive2(void){
+static void run_Drive2(void){
     if (state.flags.update_drv2_config == 1){
         /// TODO change config
         /// set mode and sleep signals
@@ -616,25 +619,27 @@ void run_Drive2(void){
     }    
 }
 
-int run_PD(void){
+static int run_PD(void){
 /// TODO check if we are connected else return
     
     if (state.flags.update_pd_select == 1){
         // limit the value range of select and active
         if (state.data.selected > PD_getPDONum() || state.data.selected <= 0) state.data.selected = 1 ;     
-        state.data.maxvolt = PD_getMaxVoltage(state.data.selected) ;
-        state.data.minvolt = PD_getMinVoltage(state.data.selected) ;
-        state.data.maxcurrent = PD_getMinCurrent(state.data.selected);
+        state.data.maxvolt = PD_getPDOMaxVoltage((uint8_t)state.data.selected) ;
+        state.data.minvolt = PD_getPDOMinVoltage((uint8_t)state.data.selected) ;
+        state.data.maxcurrent = PD_getPDOMaxCurrent((uint8_t)state.data.selected);
         /// TODO  update capabilties and set registers
-        printSourceCap();
+        //printSourceCap();
         state.flags.update_pd_select = 0;
     }
     if (state.flags.update_pd_active == 1){
         // limit the value range of select and active
         if (state.data.active.select > PD_getPDONum() || state.data.active.select <= 0) state.data.active.select = lstActive;
         if(state.data.active.select <= PD_getFixedNum()) {
-            if(! PD_setPDO(state.data.active, PD_getPDOVoltage(state.data.active)))
-                setActive(lstActive); // if not succesfull revert to last PDO
+            if( PD_setPDO((uint8_t)(state.data.active.select), PD_getPDOVoltage((uint8_t)(state.data.active.select)))== 0 ){
+
+                setActive(); // if not succesfull revert to last PDO
+            }
         }
         else { // it is a PPS set voltage
             PD_negotiate();
@@ -656,13 +661,16 @@ int run_PD(void){
     }
     if (state.flags.update_pd_voltage == 1){
 
-        PD_setVoltage(state.data.active, state.data.voltage);
+        PD_setVoltage( state.data.voltage);
         state.flags.update_pd_voltage = 0;
     }
     PD_negotiate();
 }
 
+static void run_Power()
+{
 
+}
 
 /* main */
 int main(void)
@@ -704,6 +712,9 @@ int main(void)
 
     PRINT("SystemClk: %u\r\n", (unsigned)SystemCoreClock);
     PRINT("ChipID: %08x\r\n", (unsigned)DBGMCU_GetCHIPID());
+
+    drive_Init();
+    power_Init();
 
     /* configure the I2C pins and interrupts */
     IIC_Init(I2C_SPEED, I2C_ADDRESS); // maps SWD lines to I2C
@@ -784,7 +795,7 @@ void TIM3_IRQHandler(void)
     if (TIM_GetITStatus(TIM3, TIM_IT_Update) != RESET)
     {
         /* Handle button scan */
-        Button_Scan();
+//        Button_Scan();
     }
     /* Clear interrupt flag */
     TIM_ClearITPendingBit(TIM3, TIM_IT_Update);

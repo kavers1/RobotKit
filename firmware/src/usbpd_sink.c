@@ -5,6 +5,7 @@
 // Reference:               https://github.com/openwch/ch32x035
 // 2023 by Stefan Wagner:   https://github.com/wagiminator
 
+//#include <ch32x035.h> /* both X033 and X035 */
 #include "usbpd_sink.h"
 
 // Variables
@@ -29,12 +30,12 @@ __attribute__ ((aligned(4))) uint8_t PD_SC_buffer[28];  // PD Source Cap buffer
 void PD_update(void);
 
 // Negotiate current settings and wait until finished (return 1) or timeout (return 0)
-uint8_t PD_negotiate(void) {
+uint8_t PD_negotiate(void) {  //USBPD_SinkNegotiate
   uint8_t counter = 255;
   PD_control.LastSetVoltage = 0;
   PD_control.USBPD_READY = 0;
   while((!PD_control.USBPD_READY) && (--counter)) {
-    DLY_ms(5);
+    Delay_Ms(5);
     PD_update();
   }
   return(counter > 0);
@@ -150,9 +151,9 @@ uint8_t PD_connect(void) {
   #endif
 
   USBPD->DMA      = (uint32_t)PD_TR_buffer;
-  USBPD->CONFIG   = USBPD_IE_RX_ACT | USBPD_IE_RX_RESET | USBPD_IE_TX_END  | USBPD_PD_DMA_EN;
-  USBPD->STATUS   = USBPD_BUF_ERR   | USBPD_IF_RX_BIT   | USBPD_IF_RX_BYTE 
-                  | USBPD_IF_RX_ACT | USBPD_IF_RX_RESET | USBPD_IF_TX_END;
+  USBPD->CONFIG   = IE_RX_ACT | IE_RX_RESET | IE_TX_END  | PD_DMA_EN;
+  USBPD->STATUS   = BUF_ERR   | IF_RX_BIT   | IF_RX_BYTE 
+                  | IF_RX_ACT | IF_RX_RESET | IF_TX_END;
   return PD_negotiate();
 }
 
@@ -163,13 +164,13 @@ uint8_t PD_connect(void) {
 // Enter reception mode
 void PD_RX_mode(void) {
   USBPD->BMC_CLK_CNT =  USBPD_TMR_RX;
-  USBPD->CONTROL     = (USBPD->CONTROL & ~USBPD_PD_TX_EN) | USBPD_BMC_START;
+  USBPD->CONTROL     = (USBPD->CONTROL & ~PD_TX_EN) | BMC_START;
 }
 
 // Reset PD
 void PD_reset(void) {
-  USBPD->PORT_CC1 = USBPD_CC_CMP_66 | USBPD_CC_PD;
-  USBPD->PORT_CC2 = USBPD_CC_CMP_66 | USBPD_CC_PD;
+  USBPD->PORT_CC1 = CC_CMP_66 | CC_PD;
+  USBPD->PORT_CC2 = CC_CMP_66 | CC_PD;
   PD_control.CC1_ConnectTimes  = 0;
   PD_control.CC2_ConnectTimes  = 0;
   PD_control.CC_NoneTimes      = 0;
@@ -197,27 +198,27 @@ void PD_memcpy(uint8_t* dest, const uint8_t* src, uint8_t n) {
 
 // Send PD data
 void PD_sendData(uint8_t length) {
-  if((USBPD->CONFIG & USBPD_CC_SEL) == USBPD_CC_SEL) USBPD->PORT_CC2 |= USBPD_CC_LVE;
-  else                                               USBPD->PORT_CC1 |= USBPD_CC_LVE;
+  if((USBPD->CONFIG & CC_SEL) == CC_SEL) USBPD->PORT_CC2 |= CC_LVE;
+  else                                               USBPD->PORT_CC1 |= CC_LVE;
 
   USBPD->BMC_CLK_CNT = USBPD_TMR_TX;
-  USBPD->TX_SEL      = USBPD_TX_SOP0;
+  USBPD->TX_SEL      = UPD_SOP0;
   USBPD->BMC_TX_SZ   = length;
   USBPD->STATUS      = 0;
-  USBPD->CONTROL    |= USBPD_BMC_START | USBPD_PD_TX_EN;
+  USBPD->CONTROL    |= BMC_START | PD_TX_EN;
 }
 
 // Detect CC connection; returns 0:No connection, 1:CC1 connection, 2:CC2 connection
 uint8_t PD_checkCC(void) {
   uint8_t ccLine = USBPD_CCNONE;
 
-  USBPD->PORT_CC1 &= ~(USBPD_CC_CE | USBPD_PA_CC_AI);
-  USBPD->PORT_CC1 |= USBPD_CC_CMP_22;
-  if(USBPD->PORT_CC1 & USBPD_PA_CC_AI) ccLine = USBPD_CC1;
+  USBPD->PORT_CC1 &= ~(CC_CMP_Mask | PA_CC_AI);
+  USBPD->PORT_CC1 |= CC_CMP_22;
+  if(USBPD->PORT_CC1 & PA_CC_AI) ccLine = USBPD_CC1;
 
-  USBPD->PORT_CC2 &= ~(USBPD_CC_CE | USBPD_PA_CC_AI);
-  USBPD->PORT_CC2 |= USBPD_CC_CMP_22;
-  if(USBPD->PORT_CC2 & USBPD_PA_CC_AI) ccLine = USBPD_CC2;
+  USBPD->PORT_CC2 &= ~(CC_CMP_Mask | PA_CC_AI);
+  USBPD->PORT_CC2 |= CC_CMP_22;
+  if(USBPD->PORT_CC2 & PA_CC_AI) ccLine = USBPD_CC2;
 
   return ccLine;
 }
@@ -365,7 +366,7 @@ void PD_update(void) {
       if(PD_control.CC1_ConnectTimes > 5) {
         PD_control.CC1_ConnectTimes = 0;
         PD_control.CC_State = CC_CONNECT;
-        USBPD->CONFIG &= ~USBPD_CC_SEL;
+        USBPD->CONFIG &= ~CC_SEL;
       }
     }
     else if(ccLine == USBPD_CC2) {
@@ -374,7 +375,7 @@ void PD_update(void) {
       if(PD_control.CC2_ConnectTimes > 5) {
         PD_control.CC2_ConnectTimes = 0;
         PD_control.CC_State = CC_CONNECT;
-        USBPD->CONFIG |= USBPD_CC_SEL;
+        USBPD->CONFIG |= CC_SEL;
       }
     }
     else {
@@ -462,27 +463,27 @@ void USBPD_IRQHandler(void) __attribute__((interrupt));
 void USBPD_IRQHandler(void) {
 
   // Receive complete interrupt
-  if(USBPD->STATUS & USBPD_IF_RX_ACT) {
-    if((USBPD->STATUS & USBPD_BMC_AUX) == USBPD_BMC_AUX_SOP0) {
+  if(USBPD->STATUS & IF_RX_ACT) {
+    if((USBPD->STATUS & BMC_AUX_Mask) == BMC_AUX_SOP0) {
       if(USBPD->BMC_BYTE_CNT >= 6) {
         PD_RX_analyze();
       }
     }
-    USBPD->STATUS |= USBPD_IF_RX_ACT;
+    USBPD->STATUS |= IF_RX_ACT;
   }
 
   // Transmit complete interrupt (GoodCRC only)
-  if(USBPD->STATUS & USBPD_IF_TX_END) {
-    USBPD->PORT_CC1 &= ~USBPD_CC_LVE;
-    USBPD->PORT_CC2 &= ~USBPD_CC_LVE;
+  if(USBPD->STATUS & IF_TX_END) {
+    USBPD->PORT_CC1 &= ~CC_LVE;
+    USBPD->PORT_CC2 &= ~CC_LVE;
     PD_RX_mode();
     PD_control.SinkGoodCRCOver = 1;
-    USBPD->STATUS |= USBPD_IF_TX_END;
+    USBPD->STATUS |= IF_TX_END;
   }
 
   // Reset interrupt
-  if(USBPD->STATUS & USBPD_IF_RX_RESET) {
-    USBPD->STATUS |= USBPD_IF_RX_RESET;
+  if(USBPD->STATUS & IF_RX_RESET) {
+    USBPD->STATUS |= IF_RX_RESET;
     PD_reset();
   }
 }
