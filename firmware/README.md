@@ -1,14 +1,26 @@
 # RobotKit Fri3d Camp 2026
 
 ## Design ideas
-    - WCH32x035
+The robotkit badge extension is an interface board to drive motors and/or servos. The idea was to reuse the badge as controller for moving parts. This is accomplished by 2 motor drivers, a PWM driver to control servo's and an IO expander to have some inputs for digital signals. All this is connected over the I2C-bus of the badge. The initial idea was to control the motor drives from a CH32X035, the companion mcu also used on the badge. But since the DRV8847 had delivery issues we switched over to the I2C version of the motor drivers (cost impact). The remaining IO pins of the CH32X035 can be used for general IO. This part has not be implemented yet. This will need additional firmware on the CH32X035.
+
+### used hardware :
+    - CH32x035
     - DRV8847 --> DRV8847S
     - TCA9555
     - PCA9685
 
+I2C communication to the different IC's is done by selecting the correct slave address. For some of them the address can be set by solder bridges, others are set in software, but the CH32X035 has a fixed address 0x5E and the DRV8847S also has a fixed startup address 0x60. The latter can and must be overwritten during initialization.
+
+
+During the design it was clear that compatibility with LEGO is a plus. For that reason the PCB has provisions for 2 x 2 WEDO connectors, or 2 x 2 LEGO connectors or a terminal block wire up the motors.
+
     - WEDO connector 
     - LEGO connector hack
     - Terminal block
+
+Since power supply is crutial but hard to predict what is needed, the PCB has multiple provisions. A 5V DC supply can be used on a terminal or barrel connection or on the USB connector (power pack), then the whole board is 5V DC on the power side. The CH32X035 communication can be on the 3V3 power of the badge. A level shifter is on the board. If the motors require more then the 5V, an USB-PD power supply can be hooked up to the USB connector. In that case an additional K7805 has to be added to the board, to provide the 5V-DC to IO expansion and the PWM. The voltage of the USB-PD can be set using the I2C communication. It shall be set at at least 7V DC and will not excide 18V DC
+Keep always in mind the max current the power supply can deliver and the PCB can coop with.
+Setting the power supply is done by solder bridges and adding component.
 
 ## Software Design
 
@@ -116,7 +128,7 @@ Also the PWM driver has needs the 5V
 |TCA|1| | | byte |
 
 ### I2C addresses
-|CH32X035 | ||
+|CH32X035 |0x5E| firmware defined|
 |----|----|----|
 |DRV8847S   | 0x60h| default 
 |DRV8847S-1 |   0x61h| proposal
