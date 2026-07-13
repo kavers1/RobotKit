@@ -30,11 +30,11 @@
 extern "C" {
 #endif
 
-#include "config.h"
 #include <ch32x035.h>
 #include <ch32x035_usbpd.h>
+#include "debug.h"
 #include "usbpd.h"
-
+/// KOV added
 // ===================================================================================
 // System Options (set "1" to activate)
 // ===================================================================================
@@ -82,7 +82,7 @@ extern "C" {
   #undef  F_CPU
   #define F_CPU           8000000
 #endif
-
+/// KOV end of added
 
 // ===================================================================================
 // Parameters and Checks

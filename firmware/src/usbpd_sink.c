@@ -444,7 +444,7 @@ void PD_RX_analyze(void) {
   }
 
   if(sendGoodCRCFlag) {
-    DLY_us(30);
+    Delay_Us(30);
     PD_control.SinkGoodCRCOver = 0;
     USBPD_MessageHeader_t my_mh;
     my_mh.d16 = 0u;

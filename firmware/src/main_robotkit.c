@@ -46,6 +46,7 @@
 #include <stdlib.h>   /* atoi() */
 #include <string.h>   /* memset() */
 #include <usbpd_sink.h> 
+#include "PWM_tim2.h"
 
 #include "debug.h"
 
@@ -574,13 +575,13 @@ static void run_Drive1(void){
         /// clear change flag if not waiting
         if (state.data.drv1control.brake == 1) { // brake
             state.data.drv1speed = 0;
-            Brake(1);
+            Brake_TIM1(1);
         }
         else {
             if (state.data.drv1control.coast == 1) { // coast
                 state.data.drv1speed = 0;
             }
-            setSpeed(state.data.drv1speed,1);
+            setSpeed_TIM1(state.data.drv1speed,1);
         }
         state.flags.update_drv1_control = 0;
     }
@@ -588,7 +589,7 @@ static void run_Drive1(void){
         /// TODO adjust speed ie adjust PWM CCR register
         /// if sign change go from REV <--> FWD
         /// if just speed adjustment clear change flag
-        setSpeed(state.data.drv1speed,1);
+        setSpeed_TIM1(state.data.drv1speed,1);
 
         state.flags.update_drv1_speed = 0;
     }
@@ -619,7 +620,7 @@ static void run_Drive2(void){
     }    
 }
 
-static int run_PD(void){
+static void run_PD(void){
 /// TODO check if we are connected else return
     
     if (state.flags.update_pd_select == 1){
@@ -638,7 +639,7 @@ static int run_PD(void){
         if(state.data.active.select <= PD_getFixedNum()) {
             if( PD_setPDO((uint8_t)(state.data.active.select), PD_getPDOVoltage((uint8_t)(state.data.active.select)))== 0 ){
 
-                setActive(); // if not succesfull revert to last PDO
+                PD_setPDO((uint8_t)(lstActive), PD_getPDOVoltage((uint8_t)(lstActive))); // if not succesfull revert to last PDO    
             }
         }
         else { // it is a PPS set voltage
