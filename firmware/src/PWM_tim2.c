@@ -71,6 +71,58 @@ void TIM1_pwm_init() {
 	TIM1->CTLR1 |= TIM_CEN;				// Start timer
 
 }
+void Brake(int8_t drive){
+	// output 00 to the 2 control pins of the DRV8847
+	switch (drive )
+	{
+	case 1:
+		TIM1->CH1CVR = period + 1;			// speed setpoint where period = full speed
+		TIM1->CH2CVR = period + 1;
+		break;
+	case 2:
+		TIM1->CH3CVR = period + 1;			// speed setpoint where period is full speed
+		TIM1->CH4CVR = period + 1;			
+		break;
+		case 3:
+		TIM2->CH1CVR = period + 1;			// speed setpoint where period = full speed
+		TIM2->CH2CVR = period + 1;
+		break;
+	case 4:
+		TIM2->CH3CVR = period + 1;			// speed setpoint where period is full speed
+		TIM2->CH4CVR = period + 1;			
+		break;
+	}
+}
+
+void SetSpeed(int16_t speed, int8_t drive){
+		// speed > 0: FORWARD output 10 to the control pins. pin1 is PWM controled for speed adjustment
+		// speed < 0: REVERSE output 01 to the control pins. pin2 is PWM controled for speed adjustment
+		// speed = 0: COAST output 00 to the control pins.
+    // speed specified as a signed integer, where the absolute value is the PWM duty cycle and the sign indicates direction.
+		// speed is limited to the range [-period, period], where period is the PWM period.
+		// period +1 is used to indicate a coasting condition, where both control pins are set to 0.
+	int16_t sp1 = speed >= 0 ?  speed : period + 1 ;
+	int16_t sp2 = speed <= 0 ? -speed : period + 1 ;
+	switch (drive )
+	{
+	case 1:
+		TIM1->CH1CVR = sp1;				// speed setpoint where period is full speed
+		TIM1->CH2CVR = sp2;	
+		break;
+	case 2:
+		TIM1->CH3CVR = sp1;				// speed setpoint where period is full speed
+		TIM1->CH4CVR = sp2;	
+		break;
+	case 3:
+		TIM2->CH1CVR = sp1;				// speed setpoint where period is full speed
+		TIM2->CH2CVR = sp2;	
+		break;
+	case 4:
+		TIM2->CH3CVR = sp1;				// speed setpoint where period is full speed
+		TIM2->CH4CVR = sp2;	
+		break;
+	}
+}
 
 void Brake_TIM1(int8_t drive){
 	// output 00 to the 2 control pins of the DRV8847

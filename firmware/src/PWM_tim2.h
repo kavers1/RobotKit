@@ -18,6 +18,8 @@ void TIM2_pwm_init() ;
 void Brake( uint8_t drive);
 void setSpeed(int16_t speed, uint8_t drive);
 
+void Brake( uint8_t drive);
+void SetSpeed(int16_t speed, uint8_t drive);
 
 #endif
 #ifdef __cplusplus

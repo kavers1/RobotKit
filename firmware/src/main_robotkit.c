@@ -1,21 +1,21 @@
 /*
- * Copyright (c) 2026 Bert Outtier <outtierbert@gmail.com> Koen Verstringe 
+ * Copyright (c) 2026 Koen Verstringe <koen.verstringe@gmail.com>
  *
  * Badge Robot Kit firmware for the Fri3d Badge 2026.
  *
  * This firmware runs on a WCH CH32X035 microcontroller and acts as a
- * peripheral to setup the robotkit expansion board for the Fri3d badge. It allows the configuration of
- * motor voltage and driver settings of motor drivers
+ * peripheral to setup the robotkit expansion board for the Fri3d badge. 
+ * It allows the configuration of motor voltage and driver settings of motor drivers
  *
  *   PD controller (readable via I2C):
  *     - PD number of fixed voltage sources
- *     - PD number of varialbe voltage sources
+ *     - PD number of variable voltage sources
  *     - Minimal voltage of selected PDO
  *     - Maximal voltage of selected PDO
  *     - Maximal current of the selected PDO 
  *   PD controller (writeble via I2C):
  *     - Selected PDO, select the PDO for above readings
- *     - Active PDO, set the PDO
+ *     - Active PDO, set the PDO to use
  *     - Voltage setpoint of a variable voltage source, for fixed voltage source this is equal to its voltage
  *     - Current setpoint of a variable voltage source, if fixed current settings this is equal to its max current
  *
@@ -26,9 +26,7 @@
  *     - drive control (FWD,REV,BRAKE,COAST)
  *     - drive speed setpoint (PWM signal)
  * 
- *   IO exopander (readable via I2C)
- *     - IOexpander interrupt bit
- * 
+ *   IO expander (readable via I2C)
  * 
  *   TODO
  *   TBD hardware signals to X035 IO
@@ -54,7 +52,7 @@
 /// TODO check
 #define USB_MONITOR_PIN         GPIO_Pin_3
 //#define USB_MONITOR_CHANNEL     ADC_Channel_13
-#define USB_MONITOR_RANK        (3)
+//#define USB_MONITOR_RANK        (3)
 
 
 #define DRV1_PORT               GPIOB       // PB
@@ -86,9 +84,6 @@
 #define I2C_TIMEOUT             (-2)
 #define I2C_TIMEOUT_TICK        ((SystemCoreClock / 10) - 1) /* 100 ms timeout for I2C reads */
 #define I2C_SPEED               (400000)
-
-/* TIM3 auto-reload value for a 100 Hz interrupt used for button debounce timing */
-#define TIMER_FREQ ((SystemCoreClock / 10000) - 1)
 
 /*
  * I2C register map layout (also the memory layout of addon_data_t / raw_data[]):
@@ -130,7 +125,7 @@
 #define DRIVE_RW_OFFSET    (1)  /* offset of Drive1 read write registers*/
 #define DRIVE_SIZE         (6)
 #define DRIVE2_OFFSET      (32) /* byte offset to Drive2 registers*/
-#define RESULT_BUFFER_SIZE (36) 
+#define RESULT_BUFFER_SIZE (32) 
 // writeable registers
 #define PD_SELECT          ( PD_OFFSET + 8)
 #define PD_ACTIVE          ( PD_OFFSET + 9)
@@ -207,7 +202,7 @@ typedef struct __attribute__((packed))
 
  typedef struct __attribute__((packed))
 {
-    uint8_t version[3];  
+    uint8_t  version[3];  
     uint8_t  powerenable;                /* firmware version [major, minor, patch] — READ-ONLY */
     uint8_t  numberpdo;
     uint8_t  numberpps;
@@ -229,8 +224,8 @@ typedef struct __attribute__((packed))
     drive_control_t drv2control;
     uint8_t  drv2padding;
     int16_t  drv2speed;
-    uint16_t drv2padding2;
-    uint16_t drv2padding3;
+//    uint16_t drv2padding2;
+//    uint16_t drv2padding3;
 } robotkit_data_t;
 
 
@@ -270,8 +265,8 @@ static void drive_Init(void)
 //TODO check next lines
 
  /* Enable AFIO, GPIO A, B and C clock */
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO | RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOB | RCC_APB2Periph_GPIOC, ENABLE | RCC_APB2Periph_TIM1);
-
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO | RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOB | RCC_APB2Periph_GPIOC| RCC_APB2Periph_TIM1, ENABLE );
+    RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
 
     GPIO_InitTypeDef GPIO_InitStructure = {0};
 
@@ -287,10 +282,8 @@ static void drive_Init(void)
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
     GPIO_Init(DRV1_PORT, &GPIO_InitStructure); // GPIOB
 /// TODO init pwm drv1
-
-//TODO check next line
-
-    /* AUX power and LCD reset are on GPIOB */
+    TIM1_pwm_init();
+    
     GPIO_InitStructure.GPIO_Pin = DRV2_SLEEP_PIN | DRV2_IN4_PIN | DRV2_IN3_PIN | DRV2_IN2_PIN | DRV2_IN1_PIN ;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
@@ -301,7 +294,8 @@ static void drive_Init(void)
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
     GPIO_Init(DRV2_PORT, &GPIO_InitStructure); // GPIOB
-/// TODO init pwm drv1
+/// TODO init pwm drv2
+    TIM2_pwm_init();
 }
 
 static void power_Init(void)
