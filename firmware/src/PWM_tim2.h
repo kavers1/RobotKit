@@ -6,7 +6,6 @@ extern "C" {
 #endif
 
 #include <ch32x035.h> /* both X033 and X035 */
-//#include "system.h"
 
 #define FUNCONF_USE_DEBUGPRINTF 1
 
@@ -25,4 +24,3 @@ void SetSpeed(int16_t speed, uint8_t drive);
 #ifdef __cplusplus
 }
 #endif
-

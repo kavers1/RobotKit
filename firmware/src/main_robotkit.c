@@ -91,7 +91,7 @@
  *   Offset  Size  Description
  *   ------  ----  -------------------------------------------
  *   0x00     3    Firmware version [major, minor, patch]   (READ-ONLY)
- *   0x03     1    Padding (required for 4-byte alignment of ADC buffer)
+ *   0x03     1    Powersupply status                       (READ-Write)
  *   0x04     1    PD controller number of PDO's            (READ-ONLY)
  *   0x05     1    PD controller number of PPS's            (READ-ONLY)
  *   0x06     2    PD controller minimal voltage            (READ-ONLY)
@@ -117,7 +117,7 @@
  *
  * Total: RESULT_BUFFER_SIZE = 39 bytes.
  */
-
+#define PWRSUPPLY          (2)  /* byte offeset to the power supply indictr*/
 #define PD_OFFSET          (3)  /* byte offset to PD controller registers*/
 #define PD_RW_OFFSET       (9)  /* offset of PD read write registers */
 #define PD_SIZE            (15)
@@ -138,6 +138,14 @@
 #define DRV2_CONTROL       ( DRIVE2_OFFSET + 2)
 #define DRV2_SPEED         ( DRIVE2_OFFSET + 4)
 
+typedef struct __attribute__((packed))
+{
+    uint8_t fixed : 1;
+    uint8_t usb : 1;
+    uint8_t padding : 4;
+    uint8_t enable : 1 ;
+    uint8_t reboot : 1 ;
+}  PWR_status_t;
 
 typedef struct __attribute__((packed))
 {
@@ -149,16 +157,14 @@ typedef struct __attribute__((packed))
 typedef struct __attribute__((packed))
 {
     uint8_t fault :1;   // value of the fault pin when not in address mode
-    uint8_t reserved :6;
-    uint8_t iomode :1;  // input - output mode of nfault
+    uint8_t reserved :7;
 } drive_status_t;
 
 typedef struct __attribute__((packed))
 {
-    uint8_t fault :1;   // set fault to write address
-    uint8_t reserved :5;
-    uint8_t iomode : 1;
-    uint8_t set_address :1; // set fault pin to output to configure the I2C address of the DRV
+    uint8_t set_address :1;   // set fault to write address
+    uint8_t reserved :6;
+    uint8_t address_mode :1; // set fault pin to output to configure the I2C address of the DRV
 } drive_config_t;
 
 typedef struct __attribute__((packed))
@@ -182,6 +188,7 @@ typedef struct __attribute__((packed))
  */
 typedef struct __attribute__((packed))
 {
+    uint8_t update_power : 1;       /* set when DRV power enable or reboot is written via I2C */
     uint8_t update_pd_select : 1;   /* set when PD select written via I2C */
     uint8_t update_pd_active : 1;   /* set when PD actyive written via I2C */
     uint8_t update_pd_voltage : 1;  /* set when PD voltage written via I2C */
@@ -195,35 +202,35 @@ typedef struct __attribute__((packed))
     uint8_t update_drv2_control : 1;/* set when Drive2 control written via I2C */
     uint8_t update_drv2_speed : 1;   /* set when Drive2 speed written via I2C */
 
-    uint8_t reserved : 5;           /* reserved for future use */
+    uint8_t reserved : 4;           /* reserved for future use */
     uint8_t slave_first_write:1;    
     
 } update_flags_t;
 
  typedef struct __attribute__((packed))
 {
-    uint8_t  version[3];  
-    uint8_t  powerenable;                /* firmware version [major, minor, patch] — READ-ONLY */
-    uint8_t  numberpdo;
-    uint8_t  numberpps;
-    uint16_t minvolt;
-    uint16_t maxvolt;
-    uint16_t maxcurrent;
-    uint8_t  selected;
-    PDO_select_t active;
-    uint16_t voltage;
-    uint16_t current;
-    drive_status_t  drv1status;
-    drive_config_t  drv1config;
-    drive_control_t drv1control;
+    uint8_t  version[3];        /* firmware version [major, minor, patch] — READ-ONLY */
+    PWR_status_t  powersupply;       /* power supply status. ie fixed 5V suppy or USB supply */             
+    uint8_t  numberpdo;         /* number of fixed voltage power delivery */
+    uint8_t  numberpps;         /* number of variable power delivey */
+    uint16_t minvolt;           /* minimal voltage of selected power delivery */
+    uint16_t maxvolt;           /* maximal voltage of selected power delivery */
+    uint16_t maxcurrent;        /* maximal current of selected power delivery */
+    uint8_t  selected;          /* selector of power delivery*/
+    uint8_t  active;        /* the currently active power delivery, most significant bit enables power to DRV's */
+    uint16_t voltage;           /* current voltage setpoint */
+    uint16_t current;           /* current current setpoint */
+    drive_status_t  drv1status; /* fault status of DRV1 */
+    drive_config_t  drv1config; /* configuration of DRV1 */
+    drive_control_t drv1control;/* control register of DRV1 */
     uint8_t  drv1padding;
-    int16_t  drv1speed;
+    int16_t  drv1speed;         /* speed setpoint of DRV1 */
     uint16_t drv1padding2;
-    drive_status_t  drv2status;
-    drive_config_t  drv2config;
-    drive_control_t drv2control;
+    drive_status_t  drv2status; /* fault status of DRV2 */
+    drive_config_t  drv2config; /* configuration of DRV2 */
+    drive_control_t drv2control;/* control register of DRV2 */
     uint8_t  drv2padding;
-    int16_t  drv2speed;
+    int16_t  drv2speed;         /* speed setpoint of DRV2*/
 //    uint16_t drv2padding2;
 //    uint16_t drv2padding3;
 } robotkit_data_t;
@@ -260,44 +267,6 @@ typedef struct
 static robotkit_state_t state;
 static uint8_t lstActive;
 
-static void drive_Init(void)
-{
-//TODO check next lines
-
- /* Enable AFIO, GPIO A, B and C clock */
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO | RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOB | RCC_APB2Periph_GPIOC| RCC_APB2Periph_TIM1, ENABLE );
-    RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
-
-    GPIO_InitTypeDef GPIO_InitStructure = {0};
-
-    /* AUX power and LCD reset are on GPIOB */
-    GPIO_InitStructure.GPIO_Pin = DRV1_SLEEP_PIN | DRV1_IN4_PIN | DRV1_IN3_PIN | DRV1_IN2_PIN | DRV1_IN1_PIN ;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_Init(GPIOB, &GPIO_InitStructure);
-
-    //DRV1_NFAULT_PIN moet input zijn at startup
-    GPIO_InitStructure.GPIO_Pin = DRV1_NFAULT_PIN;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_Init(DRV1_PORT, &GPIO_InitStructure); // GPIOB
-/// TODO init pwm drv1
-    TIM1_pwm_init();
-    
-    GPIO_InitStructure.GPIO_Pin = DRV2_SLEEP_PIN | DRV2_IN4_PIN | DRV2_IN3_PIN | DRV2_IN2_PIN | DRV2_IN1_PIN ;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_Init(GPIOB, &GPIO_InitStructure);
-    
-    //DRV2_NFAULT_PIN moet input zijn at startup
-    GPIO_InitStructure.GPIO_Pin = DRV2_NFAULT_PIN;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
-    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_Init(DRV2_PORT, &GPIO_InitStructure); // GPIOB
-/// TODO init pwm drv2
-    TIM2_pwm_init();
-}
-
 static void power_Init(void)
 {
 
@@ -315,6 +284,53 @@ static void power_Init(void)
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
     GPIO_Init(GPIOB, &GPIO_InitStructure); // GPIOB
 }
+
+static void pd_init(void)
+{
+ // initialization done in PD_Connect
+    ;
+}
+
+static void drive_Init(void)
+{
+//TODO check next lines
+
+ /* Enable AFIO, GPIO A, B and C clock */
+ /* Enable TIM1, TIM2 */
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO | RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOB | RCC_APB2Periph_GPIOC| RCC_APB2Periph_TIM1, ENABLE );
+    RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
+
+    GPIO_InitTypeDef GPIO_InitStructure = {0};
+
+    GPIO_InitStructure.GPIO_Pin = DRV1_SLEEP_PIN | DRV1_IN4_PIN | DRV1_IN3_PIN | DRV1_IN2_PIN | DRV1_IN1_PIN ;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_Init(GPIOB, &GPIO_InitStructure);              // GPIOB
+
+    //DRV1_NFAULT_PIN moet input zijn at startup
+    GPIO_InitStructure.GPIO_Pin = DRV1_NFAULT_PIN;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_Init(DRV1_PORT, &GPIO_InitStructure);          // GPIOB
+
+/// TODO init pwm drv1
+    TIM1_pwm_init();
+    
+    GPIO_InitStructure.GPIO_Pin = DRV2_SLEEP_PIN | DRV2_IN4_PIN | DRV2_IN3_PIN | DRV2_IN2_PIN | DRV2_IN1_PIN ;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_Init(GPIOB, &GPIO_InitStructure);              // GPIOA
+    
+    //DRV2_NFAULT_PIN moet input zijn at startup
+    GPIO_InitStructure.GPIO_Pin = DRV2_NFAULT_PIN;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_Init(DRV2_PORT, &GPIO_InitStructure);          // GPIOA
+
+/// TODO init pwm drv2
+    TIM2_pwm_init();
+}
+
 
 static void IIC_Init(uint32_t bound, uint16_t address)
 {
@@ -394,9 +410,13 @@ static int i2c_pos_is_writable(uint8_t pos)
 {
 
     /// TODO power enable
-    if (pos >= PD_OFFSET + PD_RW_OFFSET && pos < PD_OFFSET + PD_SIZE) return 1;
-    if (pos >= DRIVE1_OFFSET + DRIVE_RW_OFFSET && pos < DRIVE1_OFFSET + DRIVE_SIZE) return 1;
-    if (pos >= DRIVE2_OFFSET + DRIVE_RW_OFFSET && pos < DRIVE2_OFFSET + DRIVE_SIZE) return 1;
+    if (pos == PWRSUPPLY) return 1;
+    if (pos >= PD_OFFSET + PD_RW_OFFSET && 
+        pos  < PD_OFFSET + PD_SIZE) return 1;
+    if (pos >= DRIVE1_OFFSET + DRIVE_RW_OFFSET && 
+        pos  < DRIVE1_OFFSET + DRIVE_SIZE) return 1;
+    if (pos >= DRIVE2_OFFSET + DRIVE_RW_OFFSET && 
+        pos  < DRIVE2_OFFSET + DRIVE_SIZE) return 1;
      
     return 0;
 }
@@ -454,8 +474,10 @@ static void i2c_slave_process(void)
             if (i2c_pos_is_writable(state.slave_position))
             {
                 state.raw_data[state.slave_position] = byte;
-                switch (state.slave_position)
-                {
+                // flag any changes 
+                switch (state.slave_position) {
+                case PWRSUPPLY :
+                    state.flags.update_power = 1;
                 case PD_SELECT :
                     state.flags.update_pd_select = 1;
                     break;
@@ -529,6 +551,31 @@ static void i2c_slave_process(void)
 }
 
 static void run_Drive1(void){
+    // config pin DRV2_SLEEP_PIN  DRV2_NFAULT_PIN
+/*    
+state.data.drv1status
+{
+    uint8_t fault :1;   // value of the fault pin when not in address mode
+    uint8_t reserved :7;
+}
+
+state.data.drv1config
+{
+    uint8_t set_address :1;   // set fault to write address
+    uint8_t reserved :6;
+    uint8_t address_mode :1; // set fault pin to output to configure the I2C address of the DRV
+} 
+
+state.data.drv1control
+{
+    uint8_t forward :1; 
+    uint8_t reverse :1;
+    uint8_t brake :1;
+    uint8_t coast :1;
+    uint8_t reserved :3;
+    uint8_t sleep :1;
+}
+*/
     if (state.flags.update_drv1_config == 1){
         /// TODO change config
         /// set mode and sleep signals
@@ -589,7 +636,13 @@ static void run_Drive1(void){
     }
     /// TODO
     /// read fault bit
-
+    uint32_t b = GPIO_ReadInputData(GPIOB);
+    if( b  & DRV1_NFAULT_PIN) {
+        state.data.drv1status.fault = 1;
+    }
+    else {
+        state.data.drv1status.fault = 0;
+    }
 
 }
 
@@ -616,6 +669,7 @@ static void run_Drive2(void){
 
 static void run_PD(void){
 /// TODO check if we are connected else return
+    if (state.data.powersupply.usb) return; // if no PD hardware selected return
     
     if (state.flags.update_pd_select == 1){
         // limit the value range of select and active
@@ -628,27 +682,21 @@ static void run_PD(void){
         state.flags.update_pd_select = 0;
     }
     if (state.flags.update_pd_active == 1){
-        // limit the value range of select and active
-        if (state.data.active.select > PD_getPDONum() || state.data.active.select <= 0) state.data.active.select = lstActive;
-        if(state.data.active.select <= PD_getFixedNum()) {
-            if( PD_setPDO((uint8_t)(state.data.active.select), PD_getPDOVoltage((uint8_t)(state.data.active.select)))== 0 ){
+        // limit the value range    of select and active
+        if (state.data.active> PD_getPDONum() || state.data.active <= 0) state.data.active = lstActive;
+        if(state.data.active <= PD_getFixedNum()) {
+            if( PD_setPDO((uint8_t)(state.data.active), PD_getPDOVoltage((uint8_t)(state.data.active)))== 0 ){
 
                 PD_setPDO((uint8_t)(lstActive), PD_getPDOVoltage((uint8_t)(lstActive))); // if not succesfull revert to last PDO    
+                state.data.active = lstActive ;
             }
         }
         else { // it is a PPS set voltage
             PD_negotiate();
-            if(!PD_setPDO(state.data.active.select, state.data.voltage)) {
-            state.data.active.select = lstActive; // if not succesfull revert to last PDO
+            if(!PD_setPDO(state.data.active, state.data.voltage)) {
+                PD_setPDO((uint8_t)(lstActive), state.data.voltage); // if not succesfull revert to last PDO    
+                state.data.active = lstActive; // if not succesfull revert to last PDO
             }
-        }
-        // write enable bit to output
-        if (state.data.active.enable){
-            GPIO_WriteBit(GPIOB, PWR_ENABLE_PIN, Bit_SET);
-        }
-        else
-        {
-            GPIO_WriteBit(GPIOB, PWR_ENABLE_PIN, Bit_RESET);
         }
 
         state.flags.update_pd_active = 0;
@@ -660,10 +708,35 @@ static void run_PD(void){
         state.flags.update_pd_voltage = 0;
     }
     PD_negotiate();
+/// TODO do we have to do this all the time ? or just at changes and initialize can we combine the 2 states ?
+    state.data.voltage    = PD_getPDOVoltage(state.data.active);
+    state.data.minvolt = PD_getPDOMinVoltage(state.data.selected);
+    state.data.maxvolt = PD_getPDOMaxVoltage(state.data.selected);
+    state.data.maxcurrent = PD_getPDOMaxCurrent(state.data.selected);
+    state.data.powersupply.usb = 1;
+    
 }
 
 static void run_Power()
 {
+    if (state.flags.update_power == 1){
+        // limit the value range of select and active
+        if (state.data.powersupply.reboot) reset_to_bootloader();
+        // if not reboot then set DRV power enable
+        GPIO_WriteBit(GPIOB, PWR_ENABLE_PIN, state.data.powersupply.enable ? Bit_SET : Bit_RESET);
+        state.flags.update_pd_select = 0;  // reset update flag
+    }
+    // read powersupply input and set low bits of powersupply status
+    uint32_t b = GPIO_ReadInputData(GPIOB);
+    if( b  & ADJ_ENABLE_PIN) {
+        state.data.powersupply.fixed = 1;
+        state.data.powersupply.usb = 0;
+    }
+    else{
+        state.data.powersupply.fixed = 0;
+        state.data.powersupply.usb = 1;
+    }
+
 
 }
 
@@ -697,7 +770,36 @@ int main(void)
     // TODO do we have to remap the serial ????
 
 #if (DEBUG)
-    USART_Printf_Init(115200);
+    //USART_Printf_Init(115200);
+    // expanded version of USART_Printf_Init()  to remap the serial to PC0
+
+    GPIO_InitTypeDef  GPIO_InitStructure;
+    USART_InitTypeDef USART_InitStructure;
+
+    RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART2, ENABLE);
+    /* remap to PC0
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
+
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_2;
+    */
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC, ENABLE);
+    
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_0; //PC0 = USART2_TX
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;// alternate function push-pull
+    GPIO_Init(GPIOC, &GPIO_InitStructure);
+
+    GPIO_PinRemapConfig( GPIO_PartialRemap3_USART2, ENABLE);// remap USART2 to PC0/PC1
+
+    USART_InitStructure.USART_BaudRate = 115200;
+    USART_InitStructure.USART_WordLength = USART_WordLength_8b;
+    USART_InitStructure.USART_StopBits = USART_StopBits_1;
+    USART_InitStructure.USART_Parity = USART_Parity_No;
+    USART_InitStructure.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
+    USART_InitStructure.USART_Mode = USART_Mode_Tx;
+
+    USART_Init(USART2, &USART_InitStructure);
+    USART_Cmd(USART2, ENABLE);
 #endif
 
     /* 1-second boot delay so a USB serial monitor can attach and SWD can
@@ -709,16 +811,15 @@ int main(void)
     PRINT("ChipID: %08x\r\n", (unsigned)DBGMCU_GetCHIPID());
 
     drive_Init();
-    power_Init();
-
+   
     /* configure the I2C pins and interrupts */
     IIC_Init(I2C_SPEED, I2C_ADDRESS); // maps SWD lines to I2C
     /* init drives */
-
+    drive_Init();
     /* init power */
-
+     power_Init();
     /* init PD */
-
+    pd_init();
     /* init local IO */
 
     PRINT("Robotkit Init done\r\n");
@@ -737,11 +838,10 @@ int main(void)
 
         keep PD communication alive.
         */
-        
-        run_Drive1();
-        run_Drive2();
         run_Power();
         run_PD();
+        run_Drive1();
+        run_Drive2();
         Delay_Ms(10);
         
         /* I2C master wrote a new value to the outputs register: apply it now.
