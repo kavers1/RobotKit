@@ -283,11 +283,18 @@ static void power_Init(void)
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPD;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
     GPIO_Init(GPIOB, &GPIO_InitStructure); // GPIOB
+#ifdef DEBUG
+    PRINT("power_Init()\r\n");
+#endif
 }
 
 static void pd_init(void)
 {
  // initialization done in PD_Connect
+    PD_Connect();
+#ifdef DEBUG
+    PRINT("pd_init()\r\n");
+#endif
     ;
 }
 
@@ -329,6 +336,10 @@ static void drive_Init(void)
 
 /// TODO init pwm drv2
     TIM2_pwm_init();
+#ifdef DEBUG
+    PRINT("drive_Init()\r\n");
+#endif
+
 }
 
 
@@ -393,6 +404,10 @@ static void IIC_Init(uint32_t bound, uint16_t address)
 
     /* enable I2C1 */
     I2C_Cmd(I2C1, ENABLE);
+#ifdef DEBUG
+    PRINT("I2C_Init()\r\n");
+#endif
+
 }
 
 /*
@@ -770,56 +785,40 @@ int main(void)
     // TODO do we have to remap the serial ????
 
 #if (DEBUG)
-    //USART_Printf_Init(115200);
-    // expanded version of USART_Printf_Init()  to remap the serial to PC0
-
-    GPIO_InitTypeDef  GPIO_InitStructure;
-    USART_InitTypeDef USART_InitStructure;
-
-    RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART2, ENABLE);
-    /* remap to PC0
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
-
-    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_2;
-    */
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC, ENABLE);
     
+    USART_Printf_Init(115200);
+
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO | RCC_APB2Periph_GPIOC, ENABLE);
+    
+    GPIO_InitTypeDef  GPIO_InitStructure;
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_0; //PC0 = USART2_TX
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP;// alternate function push-pull
     GPIO_Init(GPIOC, &GPIO_InitStructure);
+    Delay_Ms(100);
 
     GPIO_PinRemapConfig( GPIO_PartialRemap3_USART2, ENABLE);// remap USART2 to PC0/PC1
-
-    USART_InitStructure.USART_BaudRate = 115200;
-    USART_InitStructure.USART_WordLength = USART_WordLength_8b;
-    USART_InitStructure.USART_StopBits = USART_StopBits_1;
-    USART_InitStructure.USART_Parity = USART_Parity_No;
-    USART_InitStructure.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
-    USART_InitStructure.USART_Mode = USART_Mode_Tx;
-
-    USART_Init(USART2, &USART_InitStructure);
-    USART_Cmd(USART2, ENABLE);
 #endif
-
+    
     /* 1-second boot delay so a USB serial monitor can attach and SWD can
      * connect before any peripheral or I2C activity begins.
      */
     Delay_Ms(1000);
 
-    PRINT("SystemClk: %u\r\n", (unsigned)SystemCoreClock);
+
+    PRINT("\r\nSystemClk: %u\r\n", (unsigned)SystemCoreClock);
     PRINT("ChipID: %08x\r\n", (unsigned)DBGMCU_GetCHIPID());
 
-    drive_Init();
+//    drive_Init();
    
     /* configure the I2C pins and interrupts */
-    IIC_Init(I2C_SPEED, I2C_ADDRESS); // maps SWD lines to I2C
+//    IIC_Init(I2C_SPEED, I2C_ADDRESS); // maps SWD lines to I2C
     /* init drives */
-    drive_Init();
+    //drive_Init();
     /* init power */
      power_Init();
     /* init PD */
-    pd_init();
+//    pd_init();
     /* init local IO */
 
     PRINT("Robotkit Init done\r\n");
@@ -839,11 +838,12 @@ int main(void)
         keep PD communication alive.
         */
         run_Power();
-        run_PD();
+/*        run_PD();
         run_Drive1();
-        run_Drive2();
+        run_Drive2();*/
+        //PRINT(".");
+        PRINT(" %08x,", (unsigned)state.data.powersupply.fixed);
         Delay_Ms(10);
-        
         /* I2C master wrote a new value to the outputs register: apply it now.
          * Also handles the reboot-to-bootloader command if that bit is set.
          */
