@@ -31,6 +31,7 @@ void PD_update(void);
 
 // Negotiate current settings and wait until finished (return 1) or timeout (return 0)
 uint8_t PD_negotiate(void) {  //USBPD_SinkNegotiate
+  PRINT("PD_negotiate ");
   uint8_t counter = 255;
   PD_control.LastSetVoltage = 0;
   PD_control.USBPD_READY = 0;
@@ -133,10 +134,14 @@ uint16_t PD_getCurrent(void) {
 
 // Initialize PD registers and states, then connect
 uint8_t PD_connect(void) {
+  PRINT("PD_connect ");
+  // RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO | RCC_APB2Periph_GPIOC, ENABLE);
+  
   RCC->APB2PCENR |= RCC_AFIOEN | RCC_IOPCEN;
   RCC->AHBPCENR  |= RCC_USBPD;
   GPIOB->CFGHR    = (GPIOB->CFGHR & ~( (uint32_t)0b1111<<(((14)&7)<<2) | (uint32_t)0b1111<<(((15)&7)<<2)))
                                   |  ( (uint32_t)0b0100<<(((14)&7)<<2) | (uint32_t)0b0100<<(((15)&7)<<2));
+
   #ifdef USB_VDD
     #if USB_VDD > 0
       AFIO->CTLR |= USBPD_IN_HVT;
@@ -146,8 +151,10 @@ uint8_t PD_connect(void) {
   #else
     RCC->APB1PCENR |= RCC_PWREN;
     PWR->CTLR |= PWR_CTLR_PLS;
-    if(PWR->CSR & PWR_CSR_PVDO) AFIO->CTLR |= USBPD_IN_HVT | USBPD_PHY_V33;
-    else                        AFIO->CTLR |= USBPD_IN_HVT;
+    if(PWR->CSR & PWR_CSR_PVDO) 
+      AFIO->CTLR |= USBPD_IN_HVT | USBPD_PHY_V33;
+    else
+      AFIO->CTLR |= USBPD_IN_HVT;
   #endif
 
   USBPD->DMA      = (uint32_t)PD_TR_buffer;
@@ -169,6 +176,7 @@ void PD_RX_mode(void) {
 
 // Reset PD
 void PD_reset(void) {
+  PRINT("PD_reset ");
   USBPD->PORT_CC1 = CC_CMP_66 | CC_PD;
   USBPD->PORT_CC2 = CC_CMP_66 | CC_PD;
   PD_control.CC1_ConnectTimes  = 0;

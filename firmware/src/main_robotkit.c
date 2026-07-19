@@ -56,8 +56,8 @@
 
 
 #define DRV1_PORT               GPIOB       // PB
-#define PWR_ENABLE_PIN          GPIO_Pin_1  //PB1
-#define ADJ_ENABLE_PIN          GPIO_Pin_4  //PB4
+#define ADJ_ENABLE_PIN          GPIO_Pin_1  //PB1
+#define PWR_ENABLE_PIN          GPIO_Pin_4  //PB4
 #define DRV1_SLEEP_PIN          GPIO_Pin_7  //PB7
 #define DRV1_NFAULT_PIN         GPIO_Pin_6  //PB6
 #define DRV1_IN1_PIN            GPIO_Pin_9  //PB9
@@ -267,38 +267,47 @@ typedef struct
 static robotkit_state_t state;
 static uint8_t lstActive;
 
-static void power_Init(void)
+static void init_Power(void)
 {
+    RCC_APB2PeriphClockCmd( RCC_APB2Periph_GPIOB , ENABLE );
+    
 
     GPIO_InitTypeDef GPIO_InitStructure = {0};
 
-    /* AUX power and LCD reset are on GPIOB */
-    GPIO_InitStructure.GPIO_Pin = PWR_ENABLE_PIN;
+    /* output : power enable to DRV's */
+    GPIO_InitStructure.GPIO_Pin = PWR_ENABLE_PIN;// PWR_ENABLE_PIN;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
     GPIO_Init(GPIOB, &GPIO_InitStructure);
 
-    /// TODO port of adjust enable input
-    GPIO_InitStructure.GPIO_Pin = ADJ_ENABLE_PIN;
-    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPD;
+    /* input : do we have fixed power input or USB adjustable */
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_1 ;// ADJ_ENABLE_PIN;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
     GPIO_Init(GPIOB, &GPIO_InitStructure); // GPIOB
 #ifdef DEBUG
-    PRINT("power_Init()\r\n");
+    PRINT("init_Power\r\n");
 #endif
+
+    RCC_APB2PeriphClockCmd( RCC_APB2Periph_GPIOA , ENABLE );
+    GPIO_InitStructure.GPIO_Pin = GPIO_Pin_6 ;
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+    GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_Init(GPIOA, &GPIO_InitStructure);
+
 }
 
-static void pd_init(void)
+static void init_Pd(void)
 {
  // initialization done in PD_Connect
-    PD_Connect();
+    uint8_t rslt = PD_connect();
 #ifdef DEBUG
-    PRINT("pd_init()\r\n");
+    PRINT("init_Pd %d\r\n", rslt);
 #endif
     ;
 }
 
-static void drive_Init(void)
+static void init_Drive(void)
 {
 //TODO check next lines
 
@@ -684,7 +693,8 @@ static void run_Drive2(void){
 
 static void run_PD(void){
 /// TODO check if we are connected else return
-    if (state.data.powersupply.usb) return; // if no PD hardware selected return
+    PRINT("run_PD\r\n");
+    if (state.data.powersupply.fixed) return; // if no PD hardware selected return
     
     if (state.flags.update_pd_select == 1){
         // limit the value range of select and active
@@ -728,8 +738,7 @@ static void run_PD(void){
     state.data.minvolt = PD_getPDOMinVoltage(state.data.selected);
     state.data.maxvolt = PD_getPDOMaxVoltage(state.data.selected);
     state.data.maxcurrent = PD_getPDOMaxCurrent(state.data.selected);
-    state.data.powersupply.usb = 1;
-    
+    PRINT("PD: sel %d act %d volt %d min %d max %d cur %d\r\n", state.data.selected, state.data.active, state.data.voltage, state.data.minvolt, state.data.maxvolt, state.data.maxcurrent); 
 }
 
 static void run_Power()
@@ -741,15 +750,15 @@ static void run_Power()
         GPIO_WriteBit(GPIOB, PWR_ENABLE_PIN, state.data.powersupply.enable ? Bit_SET : Bit_RESET);
         state.flags.update_pd_select = 0;  // reset update flag
     }
-    // read powersupply input and set low bits of powersupply status
-    uint32_t b = GPIO_ReadInputData(GPIOB);
-    if( b  & ADJ_ENABLE_PIN) {
-        state.data.powersupply.fixed = 1;
-        state.data.powersupply.usb = 0;
-    }
-    else{
+ 
+    uint32_t b = GPIO_ReadInputData(GPIOB);  // read input of ADJ_ENABLE_PIN
+    if(( b  & ADJ_ENABLE_PIN) == (uint32_t)Bit_RESET) {
         state.data.powersupply.fixed = 0;
         state.data.powersupply.usb = 1;
+    }
+    else{
+        state.data.powersupply.fixed = 1;
+        state.data.powersupply.usb = 0;
     }
 
 
@@ -809,16 +818,27 @@ int main(void)
     PRINT("\r\nSystemClk: %u\r\n", (unsigned)SystemCoreClock);
     PRINT("ChipID: %08x\r\n", (unsigned)DBGMCU_GetCHIPID());
 
-//    drive_Init();
-   
+    /* init power */
+    init_Power();
+    /* init PD */
+    init_Pd();  // setup PD hardware and negotiate initial voltage/current
+
+    PD_reset(); // reset PD state machine to start negotiation
+    PRINT("PDONUM: %d\r\n", PD_getPDONum());
+    PRINT("PPSNUM: %d\r\n", PD_getPPSNum());
+    PRINT("PDOFIX: %d\r\n", PD_getFixedNum( ));
+    PRINT("PDVOLT: %d\r\n", PD_getPDOMaxVoltage(1));
+    PRINT("PDVOLT: %d\r\n", PD_getPDOMinVoltage(1));
+    PRINT("PDCURRENT: %d\r\n", PD_getPDOMaxCurrent(1));
+    PRINT("PD CHECK: %d\r\n", PD_checkCC());
+    
+    /* init drive */
+    // init_Drive();
+    
     /* configure the I2C pins and interrupts */
-//    IIC_Init(I2C_SPEED, I2C_ADDRESS); // maps SWD lines to I2C
+    //IIC_Init(I2C_SPEED, I2C_ADDRESS); // maps SWD lines to I2C
     /* init drives */
     //drive_Init();
-    /* init power */
-     power_Init();
-    /* init PD */
-//    pd_init();
     /* init local IO */
 
     PRINT("Robotkit Init done\r\n");
@@ -838,12 +858,12 @@ int main(void)
         keep PD communication alive.
         */
         run_Power();
-/*        run_PD();
-        run_Drive1();
+        run_PD();
+/*        run_Drive1();
         run_Drive2();*/
-        //PRINT(".");
-        PRINT(" %08x,", (unsigned)state.data.powersupply.fixed);
-        Delay_Ms(10);
+        
+        Delay_Ms(1000);
+        PD_negotiate();  
         /* I2C master wrote a new value to the outputs register: apply it now.
          * Also handles the reboot-to-bootloader command if that bit is set.
          */
