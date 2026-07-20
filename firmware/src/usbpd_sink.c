@@ -31,7 +31,6 @@ void PD_update(void);
 
 // Negotiate current settings and wait until finished (return 1) or timeout (return 0)
 uint8_t PD_negotiate(void) {  //USBPD_SinkNegotiate
-  PRINT("PD_negotiate ");
   uint8_t counter = 255;
   PD_control.LastSetVoltage = 0;
   PD_control.USBPD_READY = 0;
@@ -132,9 +131,21 @@ uint16_t PD_getCurrent(void) {
   else return PD_control.PPSSourceCap[pdonum - ppspos - 1].Current;
 }
 
+// Print source capabilities
+void PD_printSourceCap(void) {
+  uint8_t i;
+
+  for(i = 1; i <= PD_getPDONum(); i++) {
+    if(i <= PD_getFixedNum())
+      PRINT(" (%d)%6dmV %5dmA ", i, PD_getPDOVoltage(i), PD_getPDOMaxCurrent(i));
+    else
+      PRINT(" [%d]%6dmV-%5dmV \r\n", i, PD_getPDOMinVoltage(i), PD_getPDOMaxVoltage(i));
+  }
+}
+
+
 // Initialize PD registers and states, then connect
 uint8_t PD_connect(void) {
-  PRINT("PD_connect ");
   // RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO | RCC_APB2Periph_GPIOC, ENABLE);
   
   RCC->APB2PCENR |= RCC_AFIOEN | RCC_IOPCEN;
@@ -206,8 +217,10 @@ void PD_memcpy(uint8_t* dest, const uint8_t* src, uint8_t n) {
 
 // Send PD data
 void PD_sendData(uint8_t length) {
-  if((USBPD->CONFIG & CC_SEL) == CC_SEL) USBPD->PORT_CC2 |= CC_LVE;
-  else                                               USBPD->PORT_CC1 |= CC_LVE;
+  if((USBPD->CONFIG & CC_SEL) == CC_SEL) 
+    USBPD->PORT_CC2 |= CC_LVE;
+  else
+    USBPD->PORT_CC1 |= CC_LVE;
 
   USBPD->BMC_CLK_CNT = USBPD_TMR_TX;
   USBPD->TX_SEL      = UPD_SOP0;
@@ -403,7 +416,7 @@ void PD_update(void) {
     } 
     else PD_control.CC_NoneTimes = 0;    
   }
-
+  
   PD_process();
 }
 

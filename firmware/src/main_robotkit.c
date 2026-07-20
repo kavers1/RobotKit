@@ -299,12 +299,21 @@ static void init_Power(void)
 
 static void init_Pd(void)
 {
+    RCC->APB2PCENR |= RCC_AFIOEN;        // enable AFIO clock
+    AFIO->PCFR1 |= AFIO_PCFR1_SWJ_CFG_2; // disable SWD interface on PC18/PC19, so we can use them for I2C1
  // initialization done in PD_Connect
     uint8_t rslt = PD_connect();
+
+    state.data.selected = 1;
+    state.data.active = 1;
+    state.data.voltage    = PD_getPDOVoltage(state.data.active);
+    state.data.minvolt = PD_getPDOMinVoltage(state.data.selected);
+    state.data.current = PD_getPDOMaxCurrent(state.data.active);
+    state.data.maxcurrent = PD_getPDOMaxCurrent(state.data.selected);   
+    state.data.maxvolt = PD_getPDOVoltage(state.data.selected);
 #ifdef DEBUG
     PRINT("init_Pd %d\r\n", rslt);
 #endif
-    ;
 }
 
 static void init_Drive(void)
@@ -693,52 +702,56 @@ static void run_Drive2(void){
 
 static void run_PD(void){
 /// TODO check if we are connected else return
-    PRINT("run_PD\r\n");
     if (state.data.powersupply.fixed) return; // if no PD hardware selected return
+    if (state.data.powersupply.enable == 1) {
+        if (state.flags.update_pd_select == 1){
+            // limit the value range of select and active
+            if (state.data.selected > PD_getPDONum() || state.data.selected <= 0) state.data.selected = 1 ;     
+            state.flags.update_pd_select = 0;
+        }
+        if (state.flags.update_pd_active == 1){
+            // limit the value range    of select and active
+            if (state.data.active> PD_getPDONum() || state.data.active <= 0) state.data.active = lstActive;
+            if(state.data.active <= PD_getFixedNum()) {
+                if( PD_setPDO((uint8_t)(state.data.active), PD_getPDOVoltage((uint8_t)(state.data.active)))== 0 ){
+
+                    PD_setPDO((uint8_t)(lstActive), PD_getPDOVoltage((uint8_t)(lstActive))); // if not succesfull revert to last PDO    
+                    state.data.active = lstActive ;
+                }
+            }
+            else { // it is a PPS set voltage
+                PD_negotiate();
+                if(!PD_setPDO(state.data.active, state.data.voltage)) {
+                    PD_setPDO((uint8_t)(lstActive), state.data.voltage); // if not succesfull revert to last PDO    
+                    state.data.active = lstActive; // if not succesfull revert to last PDO
+                }
+            }
+
+            state.flags.update_pd_active = 0;
+            state.data.voltage = PD_getVoltage();
+        }
+        if (state.flags.update_pd_voltage == 1){
+
+            PD_setVoltage( state.data.voltage);
+            state.flags.update_pd_voltage = 0;
+        }
+    }
+    state.data.powersupply.enable = PD_negotiate();
     
-    if (state.flags.update_pd_select == 1){
-        // limit the value range of select and active
-        if (state.data.selected > PD_getPDONum() || state.data.selected <= 0) state.data.selected = 1 ;     
-        state.data.maxvolt = PD_getPDOMaxVoltage((uint8_t)state.data.selected) ;
-        state.data.minvolt = PD_getPDOMinVoltage((uint8_t)state.data.selected) ;
-        state.data.maxcurrent = PD_getPDOMaxCurrent((uint8_t)state.data.selected);
-        /// TODO  update capabilties and set registers
-        //printSourceCap();
-        state.flags.update_pd_select = 0;
-    }
-    if (state.flags.update_pd_active == 1){
-        // limit the value range    of select and active
-        if (state.data.active> PD_getPDONum() || state.data.active <= 0) state.data.active = lstActive;
-        if(state.data.active <= PD_getFixedNum()) {
-            if( PD_setPDO((uint8_t)(state.data.active), PD_getPDOVoltage((uint8_t)(state.data.active)))== 0 ){
-
-                PD_setPDO((uint8_t)(lstActive), PD_getPDOVoltage((uint8_t)(lstActive))); // if not succesfull revert to last PDO    
-                state.data.active = lstActive ;
-            }
-        }
-        else { // it is a PPS set voltage
-            PD_negotiate();
-            if(!PD_setPDO(state.data.active, state.data.voltage)) {
-                PD_setPDO((uint8_t)(lstActive), state.data.voltage); // if not succesfull revert to last PDO    
-                state.data.active = lstActive; // if not succesfull revert to last PDO
-            }
-        }
-
-        state.flags.update_pd_active = 0;
-        state.data.voltage = PD_getVoltage();
-    }
-    if (state.flags.update_pd_voltage == 1){
-
-        PD_setVoltage( state.data.voltage);
-        state.flags.update_pd_voltage = 0;
-    }
-    PD_negotiate();
+    if (state.data.powersupply.enable == 1) {
 /// TODO do we have to do this all the time ? or just at changes and initialize can we combine the 2 states ?
-    state.data.voltage    = PD_getPDOVoltage(state.data.active);
-    state.data.minvolt = PD_getPDOMinVoltage(state.data.selected);
-    state.data.maxvolt = PD_getPDOMaxVoltage(state.data.selected);
-    state.data.maxcurrent = PD_getPDOMaxCurrent(state.data.selected);
-    PRINT("PD: sel %d act %d volt %d min %d max %d cur %d\r\n", state.data.selected, state.data.active, state.data.voltage, state.data.minvolt, state.data.maxvolt, state.data.maxcurrent); 
+        state.data.voltage    = PD_getPDOVoltage(state.data.active);
+        state.data.minvolt = PD_getPDOMinVoltage(state.data.selected);
+        state.data.maxvolt = PD_getPDOMaxVoltage(state.data.selected);
+        state.data.maxcurrent = PD_getPDOMaxCurrent(state.data.selected);
+        PRINT("PD: sel %d act %d volt %d min %d max %d cur %d\r\n", state.data.selected, state.data.active, state.data.voltage, state.data.minvolt, state.data.maxvolt, state.data.maxcurrent); 
+    }
+    else{
+        state.data.voltage = 5000;
+        state.data.minvolt = 5000;
+        state.data.maxvolt = 5000;
+        state.data.maxcurrent = 1000;
+    }
 }
 
 static void run_Power()
@@ -791,12 +804,9 @@ int main(void)
     SystemCoreClockUpdate();
     Delay_Init();
 
-    // TODO do we have to remap the serial ????
-
 #if (DEBUG)
-    
     USART_Printf_Init(115200);
-
+    // remap the serial 
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_AFIO | RCC_APB2Periph_GPIOC, ENABLE);
     
     GPIO_InitTypeDef  GPIO_InitStructure;
@@ -814,24 +824,14 @@ int main(void)
      */
     Delay_Ms(1000);
 
-
     PRINT("\r\nSystemClk: %u\r\n", (unsigned)SystemCoreClock);
     PRINT("ChipID: %08x\r\n", (unsigned)DBGMCU_GetCHIPID());
 
     /* init power */
     init_Power();
-    /* init PD */
     init_Pd();  // setup PD hardware and negotiate initial voltage/current
-
-    PD_reset(); // reset PD state machine to start negotiation
-    PRINT("PDONUM: %d\r\n", PD_getPDONum());
-    PRINT("PPSNUM: %d\r\n", PD_getPPSNum());
-    PRINT("PDOFIX: %d\r\n", PD_getFixedNum( ));
-    PRINT("PDVOLT: %d\r\n", PD_getPDOMaxVoltage(1));
-    PRINT("PDVOLT: %d\r\n", PD_getPDOMinVoltage(1));
-    PRINT("PDCURRENT: %d\r\n", PD_getPDOMaxCurrent(1));
-    PRINT("PD CHECK: %d\r\n", PD_checkCC());
     
+    PD_printSourceCap();
     /* init drive */
     // init_Drive();
     
@@ -863,7 +863,9 @@ int main(void)
         run_Drive2();*/
         
         Delay_Ms(1000);
-        PD_negotiate();  
+        state.data.selected++;
+        if (state.data.selected > PD_getPDONum()) state.data.selected = 1;
+        
         /* I2C master wrote a new value to the outputs register: apply it now.
          * Also handles the reboot-to-bootloader command if that bit is set.
          */

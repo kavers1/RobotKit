@@ -166,7 +166,8 @@ uint8_t  PD_setVoltage(uint16_t voltage);       // Set specified voltage (in mil
 
 uint8_t  PD_getPDONum(void);                    // Get total number of PDOs
 uint8_t  PD_getFixedNum(void);                  // Get number of fixed power PDOs
-uint8_t  PD_getPPSNum(void);                    // Get number of programmable power PDOs       
+uint8_t  PD_getPPSNum(void);                    // Get number of programmable power PDOs      
+void PD_printSourceCap(void) ;                  // List all source capabilities (fixed and programmable) to debug output
 
 uint16_t PD_getPDOVoltage(uint8_t pdonum);      // Get voltage of specified fixed power PDO
 uint16_t PD_getPDOMinVoltage(uint8_t pdonum);   // Get minimum voltage of specified PDO
