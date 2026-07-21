@@ -235,7 +235,8 @@ typedef struct __attribute__((packed))
 //    uint16_t drv2padding3;
 } robotkit_data_t;
 
-
+volatile uint32_t cc1;
+volatile uint32_t cc2;
 
 /* Compile-time check: struct layout must match RESULT_BUFFER_SIZE exactly */
 _Static_assert(sizeof(robotkit_data_t) == RESULT_BUFFER_SIZE, "raw data and struct size are not aligned!");
@@ -836,7 +837,7 @@ int main(void)
     /* init local IO */
 
     PRINT("Robotkit Init done\r\n");
-
+    int16_t speed = 0;
     /* Main event loop — all heavy lifting is done in ISRs and DMA;
      * the loop only reacts to flags set by those background mechanisms.
      */
@@ -859,14 +860,16 @@ int main(void)
         Delay_Ms(1000);
 
         PRINT("TIM1->CH1CVR: %d : %d ", TIM1->CH1CVR, TIM1->CNT);
-        PRINT("TIM2->CH1CVR: %d : %d \r\n", TIM2->CH1CVR, TIM2->CNT);
-		uint32_t b = GPIO_ReadOutputData(GPIOB);
-        uint32_t a = GPIO_ReadOutputData(GPIOA);
-        uint8_t b2 = (b >> 9) & 0x0F; // bits 9-12 are the DRV1_IN1-4 outputs
-        uint8_t a2 = (a & 0x0F); // bits 0-3 are the DRV2_IN1-4 outputs
-        PRINT("GPIOB: %0x : GPIOA: %0x  \r\n", b2, a2);
+        PRINT("TIM1->CH2CVR: %d : %d ", TIM1->CH2CVR, TIM1->CNT);
+        PRINT("\r\n"); // force output flush
+        /*PRINT("speed: %d\r\n", speed);
+        //setSpeed_TIM1(speed,1);
+        speed += 100;
+        if (speed > 1000) speed = -1000;*/
 
-        Brake_TIM1(1);
+
+        
+        //Brake_TIM1(1);
         
         /* I2C master wrote a new value to the outputs register: apply it now.
          * Also handles the reboot-to-bootloader command if that bit is set.
@@ -967,3 +970,20 @@ void I2C1_ER_IRQHandler(void)
     if (STAR1 & I2C_STAR1_ARLO) I2C1->STAR1 &= ~I2C_STAR1_ARLO;
     if (STAR1 & I2C_STAR1_AF) I2C1->STAR1 &= ~I2C_STAR1_AF;
 }
+
+void TIM1_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
+
+void TIM1_IRQHandler(void)
+{
+    if(TIM_GetITStatus(TIM1, TIM_IT_CC1) != RESET)
+    {
+        cc1++;
+        TIM_ClearITPendingBit(TIM1, TIM_IT_CC1);
+    }
+    if(TIM_GetITStatus(TIM1, TIM_IT_Update) != RESET)
+    {
+        cc2++;
+        TIM_ClearITPendingBit(TIM1, TIM_IT_CC2);
+    }
+}
+

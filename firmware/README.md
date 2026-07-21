@@ -24,6 +24,9 @@ Setting the power supply is done by solder bridges and adding component.
 
 ## Software Design
 
+### Note :
+this software is based on several other project where code was copied from, (check references) This resulted in 2 different coding styles to approach the CH32X035, one using macro function to set configuration registers and the other addressing the registers directly and do bit manipulations. Both are equally functional. But it is not the best idea for readability to use them both. Due to time limitation, the choice was made to keep them like they are and make the firmware functional before cleaning this up. My appologies for the mix.
+
 ### I2C slaves
     - WC32X035
     - DRV8847S 2x

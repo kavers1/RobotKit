@@ -4,92 +4,98 @@
 //#include "..\ch32fun\ch32fun.h"
 #include <ch32x035.h> /* both X033 and X035 */
 #include <stdio.h>
+#include <debug.h>
 
-// T1C1: PB9
-// T1C2: PB10
-// T1C3: PB11
-// T1C4: PB12
 
 // T2C1: PA0
 // T2C2: PA1
 // T2C3: PA2
 // T2C4: PA3
 
-// TODO where is this used ? 
-#define TIM1_PWM_PIN1 PB9
-#define TIM1_PWM_PIN2 PB10
-#define TIM1_PWM_PIN3 PB11
-#define TIM1_PWM_PIN4 PB12
-uint16_t period = 10000;
+// T1C1: PB9
+// T1C2: PB10
+// T1C3: PB11
+// T1C4: PB12
+#define TIM1_PWM_PIN1 GPIO_Pin_9
+#define TIM1_PWM_PIN2 GPIO_Pin_10
+#define TIM1_PWM_PIN3 GPIO_Pin_11
+#define TIM1_PWM_PIN4 GPIO_Pin_12
+uint16_t period = 1000; // gives a PWM frequency above 20 kHz
 
 void TIM1_pwm_init() {
+	/// TODO refactor code. see https://github.com/CuriousScientist0/CH32_Microcontroller_Tutorials/blob/main/Part%203%20-%20Timers%20and%20PWM/main.c
 	// Enable TIM1 clock
-	RCC->APB2PCENR |= RCC_APB2Periph_TIM1;
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB | RCC_APB2Periph_TIM1, ENABLE);
+
+  //Timer pin config
+  GPIO_InitTypeDef GPIO_InitStructure = {0};
+	GPIO_InitStructure.GPIO_Pin = TIM1_PWM_PIN1 | TIM1_PWM_PIN2 | TIM1_PWM_PIN3 | TIM1_PWM_PIN4;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP; //alternate function, PP: push-pull
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+	GPIO_Init(GPIOB, &GPIO_InitStructure);    
 	
+	TIM_Cmd(TIM1, DISABLE); //Disable timer before (re)configuring it
+  TIM_OCInitTypeDef TIM_OCInitStructure = {0};
+  TIM_TimeBaseInitTypeDef TIM_TimeBaseInitStructure = {0};
+
 	// Timer base configuration
-	TIM1->PSC = 4 - 1;					// Prescaler
-	TIM1->ATRLR = period - 1;			// PWM period
+	TIM_TimeBaseInitStructure.TIM_Period = period-1; //Auto-Reload Register (counter's max value before overflowing)
+  TIM_TimeBaseInitStructure.TIM_Prescaler = 1; //Prescaler - Main clock's divider
+  TIM_TimeBaseInitStructure.TIM_ClockDivision = TIM_CKD_DIV1; //No clock division
+  TIM_TimeBaseInitStructure.TIM_CounterMode = TIM_CounterMode_Up; //Counting upwards
+  TIM_TimeBaseInit(TIM1, &TIM_TimeBaseInitStructure);
+
+  TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM1; //PWM
+  TIM_OCInitStructure.TIM_OutputState = TIM_OutputState_Enable; //PWM is also directed to a physical pin
+  TIM_OCInitStructure.TIM_Pulse = period/4; //Capture-compare register (PWM changes the OCPolarity when counter reaches this value)
+  TIM_OCInitStructure.TIM_OCPolarity = TIM_OCPolarity_High; //PWM is high when the counter starts at 0
+  TIM_OC1Init(TIM1, &TIM_OCInitStructure);
+	TIM_OC3Init(TIM1, &TIM_OCInitStructure);
 	
-	//forward motor1
-	TIM1->CH1CVR = 0;			// speed setpoint where period is full speed
-	TIM1->CH2CVR = period + 1;			// speed setpoint where period is full speed
-/* reverse
-	TIM1->CH1CVR = period + 1;			// speed setpoint where period is full speed
-	TIM1->CH2CVR = speeddrv1;			// speed setpoint where period is full speed
-*/
+	TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM1; //PWM
+  TIM_OCInitStructure.TIM_OutputState = TIM_OutputState_Enable; //PWM is also directed to a physical pin
+  TIM_OCInitStructure.TIM_Pulse = period/4; //Capture-compare register (PWM changes the OCPolarity when counter reaches this value)
+  TIM_OCInitStructure.TIM_OCPolarity = TIM_OCPolarity_High; //PWM is high when the counter starts at 0
+  TIM_OC2Init(TIM1, &TIM_OCInitStructure);
+	TIM_OC4Init(TIM1, &TIM_OCInitStructure);
+	
 	//! REQUIRED: Channel 1/2 PWM configuration
-	TIM1->CHCTLR1 |= (0b110 << 4);		// OC1M = 110 (PWM Mode 1) - bits [14:12]
-	TIM1->CHCTLR1 |= TIM_OC1PE;	  		// Channel 1 Preload enable - bit 11
-	TIM1->CHCTLR1 |= (0b110 << 12);		// OC2M = 110 (PWM Mode 1) - bits [14:12]
-	TIM1->CHCTLR1 |= TIM_OC1PE;		  	// Channel 2 Preload enable - bit 11
-	
-	//forward motor2
-	TIM1->CH3CVR = 0;			// speed setpoint where period is full speed
-	TIM1->CH4CVR = period + 1;			// speed setpoint where period is full speed
-/* reverse
-	TIM1->CH3CVR = period + 1;			// speed setpoint where period is full speed
-	TIM1->CH4CVR = speeddrv2;			// speed setpoint where period is full speed
-*/
+	TIM_OC1PreloadConfig(TIM1, TIM_OCPreload_Enable);
+  TIM_OC2PreloadConfig(TIM1, TIM_OCPreload_Enable);
+  	
 	//! REQUIRED: Channel 3/4 PWM configuration
-	TIM1->CHCTLR2 |= (0b110 << 4);		// OC3M = 110 (PWM Mode 1) - bits [14:12]
-	TIM1->CHCTLR2 |= TIM_OC3PE;	  		// Channel 3 Preload enable - bit 11
-	TIM1->CHCTLR2 |= (0b110 << 12);		// OC4M = 110 (PWM Mode 1) - bits [14:12]
-	TIM1->CHCTLR2 |= TIM_OC4PE;		  	// Channel 4 Preload enable - bit 11
-	TIM1->CTLR1 = TIM_ARPE;				    // Auto-reload preload enable
+	TIM_OC3PreloadConfig(TIM1, TIM_OCPreload_Enable);
+	TIM_OC4PreloadConfig(TIM1, TIM_OCPreload_Enable);
+  // Main output enable and update
+	TIM_ARRPreloadConfig(TIM1, ENABLE);
+  	
+	TIM_CtrlPWMOutputs(TIM1, ENABLE);
+  TIM_ARRPreloadConfig(TIM1, ENABLE);
 
-	
-	// Enable Channel 1,2,3 and 4 output
-	/// TODO if needed set CCxP to invert channel output
-	TIM1->CCER = (TIM1->CCER & ~(TIM_CC1E | TIM_CC1P)) | TIM_CC1E;  // enable output 1 clear polarity of output 1
-	TIM1->CCER = (TIM1->CCER & ~(TIM_CC2E | TIM_CC2P)) | TIM_CC2E;  // enable output 2 clear polarity of output 2
-	TIM1->CCER = (TIM1->CCER & ~(TIM_CC3E | TIM_CC3P)) | TIM_CC3E;  // enable output 3 clear polarity of output 3
-	TIM1->CCER = (TIM1->CCER & ~(TIM_CC4E | TIM_CC4P)) | TIM_CC4E;  // enable output 4 clear polarity of output 4
-	
-	// Main output enable and update
-	TIM1->BDTR |= TIM_MOE;				// Main output enable
-	TIM1->SWEVGR |= TIM_UG;				// Update registers
-	TIM1->CTLR1 |= TIM_CEN;				// Start timer
-
+	TIM_Cmd(TIM1, ENABLE);
+	PRINT("TIM1 PWM initialized\r\n");
 }
 void Brake(int8_t drive){
 	// output 00 to the 2 control pins of the DRV8847
+	/// TODO refactor code. can be done with TIM_OCMode_Inactive / TIM_OCMode_Active
+	/// disable timer before (re)configuring it
 	switch (drive )
 	{
 	case 1:
-		TIM1->CH1CVR = period + 1;			// speed setpoint where period = full speed
-		TIM1->CH2CVR = period + 1;
+		TIM_SetCompare1(TIM1, period + 1);// speed setpoint where period = full speed
+		TIM_SetCompare2(TIM1, period + 1);
 		break;
 	case 2:
-		TIM1->CH3CVR = period + 1;			// speed setpoint where period is full speed
-		TIM1->CH4CVR = period + 1;			
+		TIM_SetCompare3(TIM1, period + 1);			// speed setpoint where period is full speed
+		TIM_SetCompare4(TIM1, period + 1);			
 		break;
 		case 3:
-		TIM2->CH1CVR = period + 1;			// speed setpoint where period = full speed
-		TIM2->CH2CVR = period + 1;
+		TIM_SetCompare1(TIM2, period + 1);			// speed setpoint where period = full speed
+		TIM_SetCompare2(TIM2, period + 1);
 		break;
 	case 4:
-		TIM2->CH3CVR = period + 1;			// speed setpoint where period is full speed
-		TIM2->CH4CVR = period + 1;			
+		TIM_SetCompare3(TIM2, period + 1);			// speed setpoint where period is full speed
+		TIM_SetCompare4(TIM2, period + 1);			
 		break;
 	}
 }
@@ -106,20 +112,20 @@ void SetSpeed(int16_t speed, int8_t drive){
 	switch (drive )
 	{
 	case 1:
-		TIM1->CH1CVR = sp1;				// speed setpoint where period is full speed
-		TIM1->CH2CVR = sp2;	
+		TIM_SetCompare1(TIM1, sp1);				// speed setpoint where period is full speed
+		TIM_SetCompare2(TIM1, sp2);
 		break;
 	case 2:
-		TIM1->CH3CVR = sp1;				// speed setpoint where period is full speed
-		TIM1->CH4CVR = sp2;	
+		TIM_SetCompare3(TIM1, sp1);				// speed setpoint where period is full speed
+		TIM_SetCompare4(TIM1, sp2);
 		break;
 	case 3:
-		TIM2->CH1CVR = sp1;				// speed setpoint where period is full speed
-		TIM2->CH2CVR = sp2;	
+		TIM_SetCompare1(TIM2, sp1);				// speed setpoint where period is full speed
+		TIM_SetCompare2(TIM2, sp2);	
 		break;
 	case 4:
-		TIM2->CH3CVR = sp1;				// speed setpoint where period is full speed
-		TIM2->CH4CVR = sp2;	
+		TIM_SetCompare3(TIM2, sp1);				// speed setpoint where period is full speed
+		TIM_SetCompare4(TIM2, sp2);	
 		break;
 	}
 }
@@ -127,12 +133,12 @@ void SetSpeed(int16_t speed, int8_t drive){
 void Brake_TIM1(int8_t drive){
 	// output 00 to the 2 control pins of the DRV8847
 	if (drive == 1){
-		TIM1->CH1CVR = period + 1;			// speed setpoint where period = full speed
-		TIM1->CH2CVR = period + 1;
+		TIM_SetCompare1(TIM1, period + 1);
+		TIM_SetCompare2(TIM1, period + 1);
 	}
 	else{
-		TIM1->CH3CVR = period + 1;			// speed setpoint where period is full speed
-		TIM1->CH4CVR = period + 1;			
+		TIM_SetCompare3(TIM1, period + 1);			// speed setpoint where period is full speed
+		TIM_SetCompare4(TIM1, period + 1);			
 	}
 }
 
@@ -140,105 +146,114 @@ void setSpeed_TIM1(int16_t speed, int8_t drive){
 	if (drive == 1){
 		// FORWARD output 10 to the control pins. pin1 is PWM controled for speed adjustment
 		if (speed >0){
-			TIM1->CH1CVR = speed;				// speed setpoint where period is full speed
-			TIM1->CH2CVR = period + 1;	
+			TIM_SetCompare1(TIM1, speed);				// speed setpoint where period is full speed
+			TIM_SetCompare2(TIM1, period + 1);	
 		}
 		// COAST output 00 to the control pins. 
 		if (speed == 0) {
-			TIM1->CH1CVR = 0;						// speed setpoint where period is full speed
-			TIM1->CH2CVR = 0;
+			TIM_SetCompare1(TIM1, 0);						// speed setpoint where period is full speed
+			TIM_SetCompare2(TIM1, 0);
 		}
 		// REVERSE output 01 to the control pins. pin2 is PWM controled for speed adjustment
 		if (speed < 0){
-			TIM1->CH1CVR = period + 1;	// speed setpoint where period is full speed
-			TIM1->CH2CVR = speed;
+			TIM_SetCompare1(TIM1, period + 1);	// speed setpoint where period is full speed
+			TIM_SetCompare2(TIM1, speed);
 		}
 
 	}
 	else{
 		// FORWARD output 10 to the control pins. pin1 is PWM controled for speed adjustment
 		if (speed >0){
-			TIM1->CH3CVR = speed;				// speed setpoint where period is full speed
-			TIM1->CH4CVR = period + 1;	
+			TIM_SetCompare3(TIM1, speed);				// speed setpoint where period is full speed
+			TIM_SetCompare4(TIM1, period + 1);	
 		}
 		// COAST output 00 to the control pins. 
 		if (speed == 0) {
-			TIM1->CH3CVR = 0;						// speed setpoint where period is full speed
-			TIM1->CH4CVR = 0;
+			TIM_SetCompare3(TIM1, 0);						// speed setpoint where period is full speed
+			TIM_SetCompare4(TIM1, 0);
 		}
 		// REVERSE output 01 to the control pins. pin2 is PWM controled for speed adjustment
 		if (speed < 0){
-			TIM1->CH3CVR = period + 1;	// speed setpoint where period is full speed
-			TIM1->CH4CVR = speed;
+			TIM_SetCompare3(TIM1, period + 1);	// speed setpoint where period is full speed
+			TIM_SetCompare4(TIM1, speed);
 		}
 	}
 }
 
 // TODO where is this used ? 
-#define TIM2_PWM_PIN1 PA0
-#define TIM2_PWM_PIN2 PA1
-#define TIM2_PWM_PIN3 PA2
-#define TIM2_PWM_PIN4 PA3
+
+// T2C1: PA0
+// T2C2: PA1
+// T2C3: PA2
+// T2C4: PA3
+#define TIM2_PWM_PIN1 GPIO_Pin_0
+#define TIM2_PWM_PIN2 GPIO_Pin_1
+#define TIM2_PWM_PIN3 GPIO_Pin_2
+#define TIM2_PWM_PIN4 GPIO_Pin_3
 
 void TIM2_pwm_init() {
-	// Enable TIM2 clock
-	RCC->APB1PCENR |= RCC_APB1Periph_TIM2;
+	/// TODO refactor code. see https://github.com/CuriousScientist0/CH32_Microcontroller_Tutorials/blob/main/Part%203%20-%20Timers%20and%20PWM/main.c
+	// Enable TIM1 clock
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
+  //Timer pin config
+  GPIO_InitTypeDef GPIO_InitStructure = {0};
+	GPIO_InitStructure.GPIO_Pin = TIM2_PWM_PIN1 | TIM2_PWM_PIN2 | TIM2_PWM_PIN3 | TIM2_PWM_PIN4;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP; //alternate function, PP: push-pull
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+	GPIO_Init(GPIOA, &GPIO_InitStructure);    
 	
+	TIM_Cmd(TIM2, DISABLE); //Disable timer before (re)configuring it
+  TIM_OCInitTypeDef TIM_OCInitStructure = {0};
+  TIM_TimeBaseInitTypeDef TIM_TimeBaseInitStructure = {0};
+
 	// Timer base configuration
-	TIM2->PSC = 4 - 1;					// Prescaler
-	TIM2->ATRLR = period - 1;			// PWM period
+	TIM_TimeBaseInitStructure.TIM_Period = period-1; //Auto-Reload Register (counter's max value before overflowing)
+  TIM_TimeBaseInitStructure.TIM_Prescaler = 1; //Prescaler - Main clock's divider
+  TIM_TimeBaseInitStructure.TIM_ClockDivision = TIM_CKD_DIV1; //No clock division
+  TIM_TimeBaseInitStructure.TIM_CounterMode = TIM_CounterMode_Up; //Counting upwards
+  TIM_TimeBaseInit(TIM2, &TIM_TimeBaseInitStructure);
+
+  TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM1; //PWM
+  TIM_OCInitStructure.TIM_OutputState = TIM_OutputState_Enable; //PWM is also directed to a physical pin
+  TIM_OCInitStructure.TIM_Pulse = period/4; //Capture-compare register (PWM changes the OCPolarity when counter reaches this value)
+  TIM_OCInitStructure.TIM_OCPolarity = TIM_OCPolarity_High; //PWM is high when the counter starts at 0
+  TIM_OC1Init(TIM2, &TIM_OCInitStructure);
+	TIM_OC3Init(TIM2, &TIM_OCInitStructure);
 	
-	//forward motor1
-	TIM2->CH1CVR = 0;			// speed setpoint where period is full speed
-	TIM2->CH2CVR = period + 1;			// speed setpoint where period is full speed
-/* reverse
-	TIM2->CH1CVR = period + 1;			// speed setpoint where period is full speed
-	TIM2->CH2CVR = speeddrv1;			// speed setpoint where period is full speed
-*/
+	TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM1; //PWM
+  TIM_OCInitStructure.TIM_OutputState = TIM_OutputState_Enable; //PWM is also directed to a physical pin
+  TIM_OCInitStructure.TIM_Pulse = period/4; //Capture-compare register (PWM changes the OCPolarity when counter reaches this value)
+  TIM_OCInitStructure.TIM_OCPolarity = TIM_OCPolarity_High; //PWM is high when the counter starts at 0
+  TIM_OC2Init(TIM2, &TIM_OCInitStructure);
+	TIM_OC4Init(TIM2, &TIM_OCInitStructure);
+	
 	//! REQUIRED: Channel 1/2 PWM configuration
-	TIM2->CHCTLR1 |= (0b110 << 4);		// OC1M = 110 (PWM Mode 1) - bits [14:12]
-	TIM2->CHCTLR1 |= TIM_OC1PE;	  		// Channel 1 Preload enable - bit 11
-	TIM2->CHCTLR1 |= (0b110 << 12);		// OC2M = 110 (PWM Mode 1) - bits [14:12]
-	TIM2->CHCTLR1 |= TIM_OC1PE;		  	// Channel 2 Preload enable - bit 11
-	
-	//forward motor2
-	TIM2->CH3CVR = 0;			// speed setpoint where period is full speed
-	TIM2->CH4CVR = period + 1;			// speed setpoint where period is full speed
-/* reverse
-	TIM2->CH3CVR = period + 1;			// speed setpoint where period is full speed
-	TIM2->CH4CVR = speeddrv2;			// speed setpoint where period is full speed
-*/
+	TIM_OC1PreloadConfig(TIM2, TIM_OCPreload_Enable);
+  TIM_OC2PreloadConfig(TIM2, TIM_OCPreload_Enable);
+  	
 	//! REQUIRED: Channel 3/4 PWM configuration
-	TIM2->CHCTLR2 |= (0b110 << 4);		// OC3M = 110 (PWM Mode 1) - bits [14:12]
-	TIM2->CHCTLR2 |= TIM_OC3PE;	  		// Channel 3 Preload enable - bit 11
-	TIM2->CHCTLR2 |= (0b110 << 12);		// OC4M = 110 (PWM Mode 1) - bits [14:12]
-	TIM2->CHCTLR2 |= TIM_OC4PE;		  	// Channel 4 Preload enable - bit 11
-	TIM2->CTLR1 = TIM_ARPE;				    // Auto-reload preload enable
+	TIM_OC3PreloadConfig(TIM2, TIM_OCPreload_Enable);
+	TIM_OC4PreloadConfig(TIM2, TIM_OCPreload_Enable);
+  // Main output enable and update
+	TIM_ARRPreloadConfig(TIM2, ENABLE);
+  	
+	TIM_CtrlPWMOutputs(TIM2, ENABLE);
+  TIM_ARRPreloadConfig(TIM2, ENABLE);
 
-	
-	// Enable Channel 1,2,3 and 4 output
-	/// TODO if needed set CCxP to invert channel output
-	TIM2->CCER = (TIM2->CCER & ~(TIM_CC1E | TIM_CC1P)) | TIM_CC1E;  // enable output 1 clear polarity of output 1
-	TIM2->CCER = (TIM2->CCER & ~(TIM_CC2E | TIM_CC2P)) | TIM_CC2E;  // enable output 2 clear polarity of output 2
-	TIM2->CCER = (TIM2->CCER & ~(TIM_CC3E | TIM_CC3P)) | TIM_CC3E;  // enable output 3 clear polarity of output 3
-	TIM2->CCER = (TIM2->CCER & ~(TIM_CC4E | TIM_CC4P)) | TIM_CC4E;  // enable output 4 clear polarity of output 4
-	
-	// Main output enable and update
-	TIM2->BDTR |= TIM_MOE;				// Main output enable
-	TIM2->SWEVGR |= TIM_UG;				// Update registers
-	TIM2->CTLR1 |= TIM_CEN;				// Start timer
-
+	TIM_Cmd(TIM2, ENABLE);
+	PRINT("TIM2 PWM initialized\r\n");
 }
 
 void Brake_TIM2(int8_t drive){
 	// output 00 to the 2 control pins of the DRV8847
 	if (drive == 1){
-		TIM2->CH1CVR = period + 1;			// speed setpoint where period = full speed
-		TIM2->CH2CVR = period + 1;
+		TIM_SetCompare1(TIM2, period + 1);			// speed setpoint where period = full speed
+		TIM_SetCompare2(TIM2, period + 1);
 	}
 	else{
-		TIM2->CH3CVR = period + 1;			// speed setpoint where period is full speed
-		TIM2->CH4CVR = period + 1;			
+		TIM_SetCompare3(TIM2, period + 1);			// speed setpoint where period is full speed
+		TIM_SetCompare4(TIM2, period + 1);			
 	}
 }
 
@@ -246,36 +261,36 @@ void setSpeed_TIM2(int16_t speed, int8_t drive){
 	if (drive == 1){
 		// FORWARD output 10 to the control pins. pin1 is PWM controled for speed adjustment
 		if (speed >0){
-			TIM2->CH1CVR = speed;				// speed setpoint where period is full speed
-			TIM2->CH2CVR = period + 1;	
+			TIM_SetCompare1(TIM2, speed);				// speed setpoint where period is full speed
+			TIM_SetCompare2(TIM2, period + 1);	
 		}
 		// COAST output 00 to the control pins. 
 		if (speed == 0) {
-			TIM2->CH1CVR = 0;						// speed setpoint where period is full speed
-			TIM2->CH2CVR = 0;
+			TIM_SetCompare1(TIM2, 0);						// speed setpoint where period is full speed
+			TIM_SetCompare2(TIM2, 0);
 		}
 		// REVERSE output 01 to the control pins. pin2 is PWM controled for speed adjustment
 		if (speed < 0){
-			TIM2->CH1CVR = period + 1;	// speed setpoint where period is full speed
-			TIM2->CH2CVR = speed;
+			TIM_SetCompare1(TIM2, period + 1);	// speed setpoint where period is full speed
+			TIM_SetCompare2(TIM2, speed);
 		}
 
 	}
 	else{
 		// FORWARD output 10 to the control pins. pin1 is PWM controled for speed adjustment
 		if (speed >0){
-			TIM2->CH3CVR = speed;				// speed setpoint where period is full speed
-			TIM2->CH4CVR = period + 1;	
+			TIM_SetCompare3(TIM2, speed);				// speed setpoint where period is full speed
+			TIM_SetCompare4(TIM2, period + 1);	
 		}
 		// COAST output 00 to the control pins. 
 		if (speed == 0) {
-			TIM2->CH3CVR = 0;						// speed setpoint where period is full speed
-			TIM2->CH4CVR = 0;
+			TIM_SetCompare3(TIM2, 0);						// speed setpoint where period is full speed
+			TIM_SetCompare4(TIM2, 0);
 		}
 		// REVERSE output 01 to the control pins. pin2 is PWM controled for speed adjustment
 		if (speed < 0){
-			TIM2->CH3CVR = period + 1;	// speed setpoint where period is full speed
-			TIM2->CH4CVR = speed;
+			TIM_SetCompare3(TIM2, period + 1);	// speed setpoint where period is full speed
+			TIM_SetCompare4(TIM2, speed);
 		}
 	}
 }
