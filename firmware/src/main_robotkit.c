@@ -44,7 +44,7 @@
 #include <stdlib.h>   /* atoi() */
 #include <string.h>   /* memset() */
 #include <usbpd_sink.h> 
-#include "PWM_tim2.h"
+#include "PWM_tim.h"
 
 #include "debug.h"
 
@@ -344,7 +344,7 @@ static void init_Drive(void)
     GPIO_InitStructure.GPIO_Pin = DRV2_SLEEP_PIN | DRV2_IN4_PIN | DRV2_IN3_PIN | DRV2_IN2_PIN | DRV2_IN1_PIN ;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
     GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_Init(GPIOB, &GPIO_InitStructure);              // GPIOA
+    GPIO_Init(GPIOA, &GPIO_InitStructure);              // GPIOA
     
     //DRV2_NFAULT_PIN moet input zijn at startup
     GPIO_InitStructure.GPIO_Pin = DRV2_NFAULT_PIN;
@@ -668,14 +668,8 @@ state.data.drv1control
         state.flags.update_drv1_speed = 0;
     }
     /// TODO
-    /// read fault bit
-    uint32_t b = GPIO_ReadInputData(GPIOB);
-    if( b  & DRV1_NFAULT_PIN) {
-        state.data.drv1status.fault = 1;
-    }
-    else {
-        state.data.drv1status.fault = 0;
-    }
+    /// read fault bit kan in 1 call
+    state.data.drv1status.fault = GPIO_ReadInputDataBit(GPIOB, DRV1_NFAULT_PIN);
 
 }
 
@@ -744,7 +738,6 @@ static void run_PD(void){
         state.data.minvolt = PD_getPDOMinVoltage(state.data.selected);
         state.data.maxvolt = PD_getPDOMaxVoltage(state.data.selected);
         state.data.maxcurrent = PD_getPDOMaxCurrent(state.data.selected);
-        PRINT("PD: sel %d act %d volt %d min %d max %d cur %d\r\n", state.data.selected, state.data.active, state.data.voltage, state.data.minvolt, state.data.maxvolt, state.data.maxcurrent); 
     }
     else{
         state.data.voltage = 5000;
@@ -830,10 +823,11 @@ int main(void)
     /* init power */
     init_Power();
     init_Pd();  // setup PD hardware and negotiate initial voltage/current
-    
+#ifdef DEBUG
     PD_printSourceCap();
+#endif
     /* init drive */
-    // init_Drive();
+    init_Drive();
     
     /* configure the I2C pins and interrupts */
     //IIC_Init(I2C_SPEED, I2C_ADDRESS); // maps SWD lines to I2C
@@ -863,8 +857,16 @@ int main(void)
         run_Drive2();*/
         
         Delay_Ms(1000);
-        state.data.selected++;
-        if (state.data.selected > PD_getPDONum()) state.data.selected = 1;
+
+        PRINT("TIM1->CH1CVR: %d : %d ", TIM1->CH1CVR, TIM1->CNT);
+        PRINT("TIM2->CH1CVR: %d : %d \r\n", TIM2->CH1CVR, TIM2->CNT);
+		uint32_t b = GPIO_ReadOutputData(GPIOB);
+        uint32_t a = GPIO_ReadOutputData(GPIOA);
+        uint8_t b2 = (b >> 9) & 0x0F; // bits 9-12 are the DRV1_IN1-4 outputs
+        uint8_t a2 = (a & 0x0F); // bits 0-3 are the DRV2_IN1-4 outputs
+        PRINT("GPIOB: %0x : GPIOA: %0x  \r\n", b2, a2);
+
+        Brake_TIM1(1);
         
         /* I2C master wrote a new value to the outputs register: apply it now.
          * Also handles the reboot-to-bootloader command if that bit is set.
