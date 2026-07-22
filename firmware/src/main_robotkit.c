@@ -1,4 +1,4 @@
-/*
+/* new
  * Copyright (c) 2026 Koen Verstringe <koen.verstringe@gmail.com>
  *
  * Badge Robot Kit firmware for the Fri3d Badge 2026.
@@ -103,40 +103,45 @@
  *   0x10     2    PD controller current                    (READ-WRITE)
  *   0x12     1    Motor driver 1 status                    (READ-ONLY)
  *   0x13     1    Motor driver 1 config                    (READ-WRITE)
- *   0x14     1    Motor driver 1 control                   (READ-WRITE)
- *   0x15     1    Padding                                  (READ-ONLY)
- *   0x16     2    Motor driver 1 speed                     (READ-WRITE)
- *   0x18     2    padding                                  (READ-ONLY)
+ *   0x14     1    Motor driver 1 control1                  (READ-WRITE)
+ *   0x15     1    Motor driver 1 control2                  (READ-WRITE)
+ *   0x16     2    Motor driver 1 speed1                    (READ-WRITE)
+ *   0x18     2    Motor driver 1 speed2                    (READ-WRITE)
  *   0x20     1    Motor driver 2 status                    (READ-ONLY)
  *   0x21     1    Motor driver 2 config                    (READ-WRITE)
- *   0x22     1    Motor driver 2 control                   (READ-WRITE)
- *   0x23     1    padding                                  (READ-ONLY)
- *   0x24     2    Motor driver 2 speed                     (READ-WRITE)
- *   0x26     2    padding                                  (READ-ONLY)
- * 
+ *   0x22     1    Motor driver 2 control1                  (READ-WRITE)
+ *   0x23     1    Motor driver 2 control2                  (READ-WRITE)
+ *   0x24     2    Motor driver 2 speed1                    (READ-WRITE)
+ *   0x26     2    Motor driver 2 speed2                    (READ-WRITE)
+* 
  *
  * Total: RESULT_BUFFER_SIZE = 39 bytes.
  */
-#define PWRSUPPLY          (2)  /* byte offeset to the power supply indictr*/
-#define PD_OFFSET          (3)  /* byte offset to PD controller registers*/
+#define PWRSUPPLY          (3)  /* byte offeset to the power supply indictr*/
+#define PD_OFFSET          (4)  /* byte offset to PD controller registers*/
 #define PD_RW_OFFSET       (9)  /* offset of PD read write registers */
 #define PD_SIZE            (15)
 #define DRIVE1_OFFSET      (18) /* byte offset to Drive1 registers */
 #define DRIVE_RW_OFFSET    (1)  /* offset of Drive1 read write registers*/
-#define DRIVE_SIZE         (6)
-#define DRIVE2_OFFSET      (32) /* byte offset to Drive2 registers*/
-#define RESULT_BUFFER_SIZE (32) 
+#define DRIVE_SIZE         (8)
+#define DRIVE2_OFFSET      (26) /* byte offset to Drive2 registers*/
+#define RESULT_BUFFER_SIZE (34) 
+
 // writeable registers
 #define PD_SELECT          ( PD_OFFSET + 8)
 #define PD_ACTIVE          ( PD_OFFSET + 9)
 #define PD_VOLTAGE         ( PD_OFFSET + 10)
 #define PD_CURRENT         ( PD_OFFSET + 12)
 #define DRV1_CONFIG        ( DRIVE1_OFFSET + 1)
-#define DRV1_CONTROL       ( DRIVE1_OFFSET + 2)
-#define DRV1_SPEED         ( DRIVE1_OFFSET + 4)
+#define DRV1_CONTROL1      ( DRIVE1_OFFSET + 2)
+#define DRV1_CONTROL2      ( DRIVE1_OFFSET + 3)
+#define DRV1_SPEED1        ( DRIVE1_OFFSET + 4)
+#define DRV1_SPEED2        ( DRIVE1_OFFSET + 6)
 #define DRV2_CONFIG        ( DRIVE2_OFFSET + 1)
-#define DRV2_CONTROL       ( DRIVE2_OFFSET + 2)
-#define DRV2_SPEED         ( DRIVE2_OFFSET + 4)
+#define DRV2_CONTROL3      ( DRIVE2_OFFSET + 2)
+#define DRV2_CONTROL4      ( DRIVE2_OFFSET + 3)
+#define DRV2_SPEED3        ( DRIVE2_OFFSET + 4)
+#define DRV2_SPEED4        ( DRIVE2_OFFSET + 6)
 
 typedef struct __attribute__((packed))
 {
@@ -156,25 +161,25 @@ typedef struct __attribute__((packed))
 
 typedef struct __attribute__((packed))
 {
-    uint8_t fault :1;   // value of the fault pin when not in address mode
+    uint8_t nfault :1;   // value of the fault pin when not in address mode
     uint8_t reserved :7;
 } drive_status_t;
 
 typedef struct __attribute__((packed))
 {
+    uint8_t sleep :1;         // set drive to sleep
     uint8_t set_address :1;   // set fault to write address
-    uint8_t reserved :6;
-    uint8_t address_mode :1; // set fault pin to output to configure the I2C address of the DRV
+    uint8_t reserved :5;
+    uint8_t address_mode :1;  // set fault pin to output to configure the I2C address of the DRV
 } drive_config_t;
 
 typedef struct __attribute__((packed))
 {
-    uint8_t forward :1; 
-    uint8_t reverse :1;
-    uint8_t brake :1;
-    uint8_t coast :1;
-    uint8_t reserved :3;
-    uint8_t sleep :1;
+    uint8_t forward :1; // Read status of motor, set by speed > 0
+    uint8_t reverse :1; // Read status of motor, set by speed < 0
+    uint8_t brake :1;   // Read/Write set by speed = 0. By write set speed to 0
+    uint8_t coast :1;   // Write set speed to 0 
+    uint8_t reserved :4;
 } drive_control_t;
 
 
@@ -192,47 +197,49 @@ typedef struct __attribute__((packed))
     uint8_t update_pd_select : 1;   /* set when PD select written via I2C */
     uint8_t update_pd_active : 1;   /* set when PD actyive written via I2C */
     uint8_t update_pd_voltage : 1;  /* set when PD voltage written via I2C */
+
     uint8_t update_pd_current : 1;  /* set when PD current written via I2C */
-
     uint8_t update_drv1_config : 1; /* set when Drive1 config written via I2C */
-    uint8_t update_drv1_control : 1;/* set when Drive1 control written via I2C */
-    uint8_t update_drv1_speed : 1;  /* set when Drive1 speed written via I2C */
-    
-    uint8_t update_drv2_config : 1; /* set when Drive2 config written via I2C */
-    uint8_t update_drv2_control : 1;/* set when Drive2 control written via I2C */
-    uint8_t update_drv2_speed : 1;   /* set when Drive2 speed written via I2C */
+    uint8_t update_drv1_control1 : 1;/* set when Drive1 control written via I2C */
+    uint8_t update_drv1_control2 : 1;/* set when Drive1 control written via I2C */
 
-    uint8_t reserved : 4;           /* reserved for future use */
-    uint8_t slave_first_write:1;    
+    uint8_t update_drv1_speed1 : 1;  /* set when Drive1 speed written via I2C */
+    uint8_t update_drv1_speed2 : 1;  /* set when Drive1 speed written via I2C */
+    uint8_t update_drv2_config : 1; /* set when Drive2 config written via I2C */
+    uint8_t update_drv2_control3 : 1;/* set when Drive2 control written via I2C */
+
+    uint8_t update_drv2_control4 : 1;/* set when Drive2 control written via I2C */
+    uint8_t update_drv2_speed3 : 1;   /* set when Drive2 speed written via I2C */
+    uint8_t update_drv2_speed4 : 1;   /* set when Drive2 speed written via I2C */
+    uint8_t slave_first_write : 1;    
     
 } update_flags_t;
 
  typedef struct __attribute__((packed))
 {
-    uint8_t  version[3];        /* firmware version [major, minor, patch] — READ-ONLY */
-    PWR_status_t  powersupply;       /* power supply status. ie fixed 5V suppy or USB supply */             
-    uint8_t  numberpdo;         /* number of fixed voltage power delivery */
-    uint8_t  numberpps;         /* number of variable power delivey */
-    uint16_t minvolt;           /* minimal voltage of selected power delivery */
-    uint16_t maxvolt;           /* maximal voltage of selected power delivery */
-    uint16_t maxcurrent;        /* maximal current of selected power delivery */
-    uint8_t  selected;          /* selector of power delivery*/
-    uint8_t  active;        /* the currently active power delivery, most significant bit enables power to DRV's */
-    uint16_t voltage;           /* current voltage setpoint */
-    uint16_t current;           /* current current setpoint */
-    drive_status_t  drv1status; /* fault status of DRV1 */
-    drive_config_t  drv1config; /* configuration of DRV1 */
-    drive_control_t drv1control;/* control register of DRV1 */
-    uint8_t  drv1padding;
-    int16_t  drv1speed;         /* speed setpoint of DRV1 */
-    uint16_t drv1padding2;
-    drive_status_t  drv2status; /* fault status of DRV2 */
-    drive_config_t  drv2config; /* configuration of DRV2 */
-    drive_control_t drv2control;/* control register of DRV2 */
-    uint8_t  drv2padding;
-    int16_t  drv2speed;         /* speed setpoint of DRV2*/
-//    uint16_t drv2padding2;
-//    uint16_t drv2padding3;
+    uint8_t  version[3];            /*@0    firmware version [major, minor, patch] — READ-ONLY */
+    PWR_status_t  powersupply;      /*@3    power supply status. ie fixed 5V suppy or USB supply */             
+    uint8_t  numberpdo;             /*@4    number of fixed voltage power delivery */
+    uint8_t  numberpps;             /*@5    number of variable power delivey */
+    uint16_t minvolt;               /*@6    minimal voltage of selected power delivery */
+    uint16_t maxvolt;               /*@8    maximal voltage of selected power delivery */
+    uint16_t maxcurrent;            /*@10   maximal current of selected power delivery */
+    uint8_t  selected;              /*@12   selector of power delivery*/
+    uint8_t  active;                /*@13   the currently active power delivery, most significant bit enables power to DRV's */
+    uint16_t voltage;               /*@14   current voltage setpoint */
+    uint16_t current;               /*@16   current current setpoint */
+    drive_status_t  drv1status;     /*@18   fault status of DRV1 */
+    drive_config_t  drv1config;     /*@19   configuration of DRV1 */
+    drive_control_t drv1control1;   /*@20   control1 register of DRV1 */
+    drive_control_t drv1control2;   /*@21   control2 register of DRV1 */
+    int16_t  drv1speed1;            /*@22   speed1 setpoint of DRV1 */
+    int16_t  drv1speed2;            /*@24   speed2 setpoint of DRV1 */
+    drive_status_t  drv2status;     /*@26   fault status of DRV2 */
+    drive_config_t  drv2config;     /*@27   configuration of DRV2 */
+    drive_control_t drv2control3;   /*@28   control1 register of DRV2 */
+    drive_control_t drv2control4;   /*@29   control2 register of DRV2 */
+    int16_t  drv2speed3;            /*@30   speed1 setpoint of DRV2*/
+    int16_t  drv2speed4;            /*@32   speed2 setpoint of DRV2*/
 } robotkit_data_t;
 
 volatile uint32_t cc1;
@@ -527,20 +534,32 @@ static void i2c_slave_process(void)
                 case DRV1_CONFIG :
                     state.flags.update_drv1_config = 1;
                     break;
-                case DRV1_CONTROL :
-                    state.flags.update_drv1_control = 1;
+                case DRV1_CONTROL1 :
+                    state.flags.update_drv1_control1 = 1;
                     break;
-                case DRV1_SPEED :
-                    state.flags.update_drv1_speed = 1;
+                case DRV1_CONTROL2 :
+                    state.flags.update_drv1_control2 = 1;
+                    break;
+                case DRV1_SPEED1 :
+                    state.flags.update_drv1_speed1 = 1;
+                    break;
+                case DRV1_SPEED2 :
+                    state.flags.update_drv1_speed2 = 1;
                     break;
                 case DRV2_CONFIG :
                     state.flags.update_drv2_config = 1;
                     break;
-                case DRV2_CONTROL :
-                    state.flags.update_drv2_control = 1;
+                case DRV2_CONTROL3 :
+                    state.flags.update_drv2_control3 = 1;
                     break;
-                case DRV2_SPEED :
-                    state.flags.update_drv2_speed = 1;
+                case DRV2_CONTROL4 :
+                    state.flags.update_drv2_control3 = 1;
+                    break;
+                case DRV2_SPEED3 :
+                    state.flags.update_drv2_speed3 = 1;
+                    break;
+                case DRV2_SPEED4 :
+                    state.flags.update_drv2_speed4 = 1;
                     break;
                 default:
                     break;
@@ -586,56 +605,34 @@ static void i2c_slave_process(void)
 
 static void run_Drive1(void){
     // config pin DRV2_SLEEP_PIN  DRV2_NFAULT_PIN
-/*    
-state.data.drv1status
-{
-    uint8_t fault :1;   // value of the fault pin when not in address mode
-    uint8_t reserved :7;
-}
-
-state.data.drv1config
-{
-    uint8_t set_address :1;   // set fault to write address
-    uint8_t reserved :6;
-    uint8_t address_mode :1; // set fault pin to output to configure the I2C address of the DRV
-} 
-
-state.data.drv1control
-{
-    uint8_t forward :1; 
-    uint8_t reverse :1;
-    uint8_t brake :1;
-    uint8_t coast :1;
-    uint8_t reserved :3;
-    uint8_t sleep :1;
-}
-*/
     if (state.flags.update_drv1_config == 1){
         /// TODO change config
         /// set mode and sleep signals
         /// reset speed and set control to coast
          GPIO_InitTypeDef GPIO_InitStructure = {0};
 
-        if (state.data.drv1control.sleep == 1)
+        if (state.data.drv1config.sleep == 1)
             GPIO_WriteBit(GPIOB, DRV1_SLEEP_PIN , Bit_SET);
         else
             GPIO_WriteBit(GPIOB, DRV1_SLEEP_PIN , Bit_RESET);
+
         // set fault bit mode to input or output to write I2C address of DRV8847S
-        if (state.data.drv1config.set_address == 1){
+        if (state.data.drv1config.address_mode == 1){
         /// TODO check init
-            GPIO_InitStructure.GPIO_Pin = DRV1_NFAULT_PIN;
-            GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
-            GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-            GPIO_Init(GPIOB, &GPIO_InitStructure);
-        }
-        else {
             GPIO_InitStructure.GPIO_Pin = DRV1_NFAULT_PIN;
             GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
             GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
             GPIO_Init(GPIOB, &GPIO_InitStructure);
         }
+        else {
+            GPIO_InitStructure.GPIO_Pin = DRV1_NFAULT_PIN;
+            GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
+            GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+            GPIO_Init(GPIOB, &GPIO_InitStructure);
+        }
 
-        if (state.data.drv1status.fault == 1)
+        // set nFault to write if in write address mode on DRV8847S
+        if ((state.data.drv1config.set_address == 1) && (state.data.drv1config.address_mode == 1))
             GPIO_WriteBit(GPIOB, DRV1_NFAULT_PIN , Bit_SET);
         else
             GPIO_WriteBit(GPIOB, DRV1_NFAULT_PIN , Bit_RESET);
@@ -643,56 +640,169 @@ state.data.drv1control
 
         state.flags.update_drv1_config = 0;
     }
-    if (state.flags.update_drv1_control == 1){
+    if (state.flags.update_drv1_control1 == 1){
         /// TODO change control
         /// if going from fwd to rev go over break for xxx ms and reset speed
         /// going from brake or coast to FWD or REV is ok 
         /// clear change flag if not waiting
-        if (state.data.drv1control.brake == 1) { // brake
-            state.data.drv1speed = 0;
-            Brake_TIM1(1);
+        if (state.data.drv1control1.brake == 1) { // brake
+            state.data.drv1speed1 = 0;
+            Brake(1);
         }
         else {
-            if (state.data.drv1control.coast == 1) { // coast
-                state.data.drv1speed = 0;
+            if (state.data.drv1control1.coast == 1) { // coast
+                state.data.drv1speed1 = 0;
             }
-            setSpeed_TIM1(state.data.drv1speed,1);
+            SetSpeed(state.data.drv1speed1,1);
         }
-        state.flags.update_drv1_control = 0;
+        state.flags.update_drv1_control1 = 0;
     }
-    if (state.flags.update_drv1_speed == 1){
-        /// TODO adjust speed ie adjust PWM CCR register
-        /// if sign change go from REV <--> FWD
-        /// if just speed adjustment clear change flag
-        setSpeed_TIM1(state.data.drv1speed,1);
+    if (state.flags.update_drv1_control2 == 1){
+        /// TODO change control
+        /// if going from fwd to rev go over break for xxx ms and reset speed
+        /// going from brake or coast to FWD or REV is ok 
+        /// clear change flag if not waiting
+        if (state.data.drv1control2.brake == 1) { // brake
+            state.data.drv1speed2 = 0;
+            Brake(2);
+        }
+        else {
+            if (state.data.drv1control2.coast == 1) { // coast
+                state.data.drv1speed2 = 0;
+            }
+            SetSpeed(state.data.drv1speed2,2);
+        }
+        state.flags.update_drv1_control1 = 0;
+    }
+    if (state.flags.update_drv1_speed1 == 1){
+        SetSpeed(state.data.drv1speed1,1);
+        state.data.drv1control1.forward = state.data.drv1speed1 > 0;
+        state.data.drv1control1.coast   = state.data.drv1speed1 = 0;
+        state.data.drv1control1.reverse = state.data.drv1speed1 < 0;
 
-        state.flags.update_drv1_speed = 0;
+        state.flags.update_drv1_speed1 = 0;
     }
-    /// TODO
-    /// read fault bit kan in 1 call
-    state.data.drv1status.fault = GPIO_ReadInputDataBit(GPIOB, DRV1_NFAULT_PIN);
+    if (state.flags.update_drv1_speed2 == 1){
+        SetSpeed(state.data.drv1speed2,1);
+        state.data.drv1control2.forward = state.data.drv1speed2 > 0;
+        state.data.drv1control2.coast   = state.data.drv1speed2 = 0;
+        state.data.drv1control2.reverse = state.data.drv1speed2 < 0;
+
+        state.flags.update_drv1_speed2 = 0;
+    }
+    
+    if ( GPIO_ReadInputDataBit(GPIOB,DRV1_NFAULT_PIN) )
+    {
+        state.data.drv1status.nfault = 1;
+    }
+    else {
+        state.data.drv1status.nfault = 0;
+    }
 
 }
 
 static void run_Drive2(void){
+    // config pin DRV2_SLEEP_PIN  DRV2_NFAULT_PIN
     if (state.flags.update_drv2_config == 1){
         /// TODO change config
         /// set mode and sleep signals
         /// reset speed and set control to coast
+         GPIO_InitTypeDef GPIO_InitStructure = {0};
+
+        if (state.data.drv2config.sleep == 1)
+            GPIO_WriteBit(GPIOB, DRV2_SLEEP_PIN , Bit_SET);
+        else
+            GPIO_WriteBit(GPIOB, DRV2_SLEEP_PIN , Bit_RESET);
+
+        // set fault bit mode to input or output to write I2C address of DRV8847S
+        if (state.data.drv2config.address_mode == 1){
+        /// TODO check init
+            GPIO_InitStructure.GPIO_Pin = DRV2_NFAULT_PIN;
+            GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_PP;
+            GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+            GPIO_Init(GPIOB, &GPIO_InitStructure);
+        }
+        else {
+            GPIO_InitStructure.GPIO_Pin = DRV2_NFAULT_PIN;
+            GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
+            GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+            GPIO_Init(GPIOB, &GPIO_InitStructure);
+        }
+        
+        // set nFault to write if in write address mode on DRV8847S
+        if ((state.data.drv2config.set_address == 1) && (state.data.drv2config.address_mode == 1))
+            GPIO_WriteBit(GPIOB, DRV2_NFAULT_PIN , Bit_SET);
+        else
+            GPIO_WriteBit(GPIOB, DRV2_NFAULT_PIN , Bit_RESET);
+        
+
         state.flags.update_drv2_config = 0;
     }
-    if (state.flags.update_drv2_control == 1){
+    if (state.flags.update_drv2_control3 == 1){
         /// TODO change control
         /// if going from fwd to rev go over break for xxx ms and reset speed
         /// going from brake or coast to FWD or REV is ok 
         /// clear change flag if not waiting
-        state.flags.update_drv2_control = 0;
+        if (state.data.drv2control3.brake == 1) { // brake
+            state.data.drv2speed3 = 0;
+            Brake(3);
+        }
+        else {
+            if (state.data.drv2control3.coast == 1) { // coast
+                state.data.drv2speed3 = 0;
+            }
+            SetSpeed(state.data.drv2speed3,1);
+        }
+        state.flags.update_drv2_control3 = 0;
     }
-    if (state.flags.update_drv2_speed == 1){
+    if (state.flags.update_drv2_control4 == 1){
+        /// TODO change control
+        /// if going from fwd to rev go over break for xxx ms and reset speed
+        /// going from brake or coast to FWD or REV is ok 
+        /// clear change flag if not waiting
+        if (state.data.drv2control4.brake == 1) { // brake
+            state.data.drv2speed4 = 0;
+            Brake(4);
+        }
+        else {
+            if (state.data.drv2control4.coast == 1) { // coast
+                state.data.drv2speed4 = 0;
+            }
+            SetSpeed(state.data.drv2speed4,2);
+        }
+        state.flags.update_drv2_control4 = 0;
+    }
+    if (state.flags.update_drv2_speed3 == 1){
         /// TODO adjust speed ie adjust PWM CCR register
         /// if sign change go from REV <--> FWD
         /// if just speed adjustment clear change flag
-    }    
+        SetSpeed(state.data.drv2speed3,1);
+        state.data.drv2control3.forward = state.data.drv2speed3 > 0;
+        state.data.drv2control3.coast   = state.data.drv2speed3 = 0;
+        state.data.drv2control3.reverse = state.data.drv2speed3 < 0;
+
+        state.flags.update_drv2_speed3 = 0;
+    }
+    if (state.flags.update_drv2_speed4 == 1){
+        /// TODO adjust speed ie adjust PWM CCR register
+        /// if sign change go from REV <--> FWD
+        /// if just speed adjustment clear change flag
+        SetSpeed(state.data.drv2speed4,1);
+        state.data.drv2control4.forward = state.data.drv2speed4 > 0;
+        state.data.drv2control4.coast   = state.data.drv2speed4 = 0;
+        state.data.drv2control4.reverse = state.data.drv2speed4 < 0;
+
+        state.flags.update_drv2_speed4 = 0;
+    }
+    /// read fault bit
+    if ( GPIO_ReadInputDataBit(GPIOB,DRV2_NFAULT_PIN) )
+    {
+        state.data.drv2status.nfault = 1;
+    }
+    else {
+        state.data.drv2status.nfault = 0;
+    }
+
 }
 
 static void run_PD(void){
@@ -702,16 +812,23 @@ static void run_PD(void){
         if (state.flags.update_pd_select == 1){
             // limit the value range of select and active
             if (state.data.selected > PD_getPDONum() || state.data.selected <= 0) state.data.selected = 1 ;     
+            state.data.maxvolt    = PD_getPDOMaxVoltage((uint8_t)state.data.selected) ;
+            state.data.minvolt    = PD_getPDOMinVoltage((uint8_t)state.data.selected) ;
+            state.data.maxcurrent = PD_getPDOMaxCurrent((uint8_t)state.data.selected);
+            /// TODO  update capabilties and set registers
+            //printSourceCap();
             state.flags.update_pd_select = 0;
         }
         if (state.flags.update_pd_active == 1){
             // limit the value range    of select and active
             if (state.data.active> PD_getPDONum() || state.data.active <= 0) state.data.active = lstActive;
-            if(state.data.active <= PD_getFixedNum()) {
+            if (state.data.active <= PD_getFixedNum()) {
                 if( PD_setPDO((uint8_t)(state.data.active), PD_getPDOVoltage((uint8_t)(state.data.active)))== 0 ){
-
                     PD_setPDO((uint8_t)(lstActive), PD_getPDOVoltage((uint8_t)(lstActive))); // if not succesfull revert to last PDO    
                     state.data.active = lstActive ;
+                }
+                else{
+                    lstActive = state.data.active;
                 }
             }
             else { // it is a PPS set voltage
@@ -720,30 +837,38 @@ static void run_PD(void){
                     PD_setPDO((uint8_t)(lstActive), state.data.voltage); // if not succesfull revert to last PDO    
                     state.data.active = lstActive; // if not succesfull revert to last PDO
                 }
+                else{
+                    lstActive = state.data.active;
+                }
             }
 
             state.flags.update_pd_active = 0;
             state.data.voltage = PD_getVoltage();
         }
         if (state.flags.update_pd_voltage == 1){
-
-            PD_setVoltage( state.data.voltage);
+            if (state.data.active > PD_getFixedNum()){
+                PD_setVoltage( state.data.voltage);
+            }
             state.flags.update_pd_voltage = 0;
         }
     }
     state.data.powersupply.enable = PD_negotiate();
+    if (state.data.powersupply.enable) {
+        state.data.numberpdo  = PD_getPDONum();
+        state.data.numberpps = PD_getPPSNum();
+    }
     
     if (state.data.powersupply.enable == 1) {
 /// TODO do we have to do this all the time ? or just at changes and initialize can we combine the 2 states ?
         state.data.voltage    = PD_getPDOVoltage(state.data.active);
-        state.data.minvolt = PD_getPDOMinVoltage(state.data.selected);
-        state.data.maxvolt = PD_getPDOMaxVoltage(state.data.selected);
+        state.data.minvolt    = PD_getPDOMinVoltage(state.data.selected);
+        state.data.maxvolt    = PD_getPDOMaxVoltage(state.data.selected);
         state.data.maxcurrent = PD_getPDOMaxCurrent(state.data.selected);
     }
     else{
-        state.data.voltage = 5000;
-        state.data.minvolt = 5000;
-        state.data.maxvolt = 5000;
+        state.data.voltage    = 5000;
+        state.data.minvolt    = 5000;
+        state.data.maxvolt    = 5000;
         state.data.maxcurrent = 1000;
     }
 }
@@ -751,21 +876,23 @@ static void run_PD(void){
 static void run_Power()
 {
     if (state.flags.update_power == 1){
-        // limit the value range of select and active
+        // reboot requested
         if (state.data.powersupply.reboot) reset_to_bootloader();
+
         // if not reboot then set DRV power enable
         GPIO_WriteBit(GPIOB, PWR_ENABLE_PIN, state.data.powersupply.enable ? Bit_SET : Bit_RESET);
+
         state.flags.update_pd_select = 0;  // reset update flag
     }
  
-    uint32_t b = GPIO_ReadInputData(GPIOB);  // read input of ADJ_ENABLE_PIN
-    if(( b  & ADJ_ENABLE_PIN) == (uint32_t)Bit_RESET) {
-        state.data.powersupply.fixed = 0;
-        state.data.powersupply.usb = 1;
-    }
-    else{
+    // read powersupply input and set low bits of powersupply status
+    if( GPIO_ReadInputDataBit(GPIOB,ADJ_ENABLE_PIN)) {  // read input of ADJ_ENABLE_PIN
         state.data.powersupply.fixed = 1;
         state.data.powersupply.usb = 0;
+    }
+    else{
+        state.data.powersupply.fixed = 0;
+        state.data.powersupply.usb = 1;
     }
 
 
@@ -831,13 +958,10 @@ int main(void)
     init_Drive();
     
     /* configure the I2C pins and interrupts */
-    //IIC_Init(I2C_SPEED, I2C_ADDRESS); // maps SWD lines to I2C
-    /* init drives */
-    //drive_Init();
+    IIC_Init(I2C_SPEED, I2C_ADDRESS); // maps SWD lines to I2C
     /* init local IO */
 
     PRINT("Robotkit Init done\r\n");
-    int16_t speed = 0;
     /* Main event loop — all heavy lifting is done in ISRs and DMA;
      * the loop only reacts to flags set by those background mechanisms.
      */
@@ -849,58 +973,22 @@ int main(void)
         it is all driven by the I2C interrupts and actions.
 
         check state flags and execute the appropriate action
-
-        keep PD communication alive.
         */
+        /* I2C master wrote a new value to the outputs register: apply it now.
+         * Also handles the reboot-to-bootloader command if that bit is set.
+         */
         run_Power();
         run_PD();
-/*        run_Drive1();
-        run_Drive2();*/
+        run_Drive1();
+        run_Drive2();
         
         Delay_Ms(1000);
 
         PRINT("TIM1->CH1CVR: %d : %d ", TIM1->CH1CVR, TIM1->CNT);
         PRINT("TIM1->CH2CVR: %d : %d ", TIM1->CH2CVR, TIM1->CNT);
         PRINT("\r\n"); // force output flush
-        /*PRINT("speed: %d\r\n", speed);
-        //setSpeed_TIM1(speed,1);
-        speed += 100;
-        if (speed > 1000) speed = -1000;*/
-
-
         
-        //Brake_TIM1(1);
         
-        /* I2C master wrote a new value to the outputs register: apply it now.
-         * Also handles the reboot-to-bootloader command if that bit is set.
-         */
-        /*if (state.flags.update_outputs)
-        {
-            state.flags.update_outputs = 0;
-            GPIO_WriteBit(AUX_POWER_PORT, AUX_POWER_PIN, state.data.aux_power ? Bit_SET : Bit_RESET);
-            GPIO_WriteBit(LCD_RESET_PORT, LCD_RESET_PIN, state.data.lcd_reset ? Bit_SET : Bit_RESET);
-            GPIO_WriteBit(LORA_RESET_PORT, LORA_RESET_PIN, state.data.lora_reset ? Bit_SET : Bit_RESET);
-
-            if (state.data.reboot)
-            {
-                PRINT("Reboot to bootloader trigger\r\n");
-                Delay_Ms(100);
-                reset_to_bootloader();
-            }
-            if (state.data.remap)
-            {
-                PRINT("Remap SWD trigger\r\n");
-                Delay_Ms(100);
-                /* disable I2C interrupts */
-        /*        I2C_ITConfig(I2C1, I2C_IT_EVT | I2C_IT_ERR | I2C_IT_BUF, DISABLE);
-
-                /* disable I2C1 */
-        /*        I2C_Cmd(I2C1, DISABLE);
-
-                /* Re-enable DIO (SWD) interface on these pins */
-        /*        GPIO_PinRemapConfig(GPIO_Remap_SWJ_Disable, DISABLE);
-            }
-        }*/
     }
 }
 
@@ -970,20 +1058,3 @@ void I2C1_ER_IRQHandler(void)
     if (STAR1 & I2C_STAR1_ARLO) I2C1->STAR1 &= ~I2C_STAR1_ARLO;
     if (STAR1 & I2C_STAR1_AF) I2C1->STAR1 &= ~I2C_STAR1_AF;
 }
-
-void TIM1_IRQHandler(void) __attribute__((interrupt("WCH-Interrupt-fast")));
-
-void TIM1_IRQHandler(void)
-{
-    if(TIM_GetITStatus(TIM1, TIM_IT_CC1) != RESET)
-    {
-        cc1++;
-        TIM_ClearITPendingBit(TIM1, TIM_IT_CC1);
-    }
-    if(TIM_GetITStatus(TIM1, TIM_IT_Update) != RESET)
-    {
-        cc2++;
-        TIM_ClearITPendingBit(TIM1, TIM_IT_CC2);
-    }
-}
-

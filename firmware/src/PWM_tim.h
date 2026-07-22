@@ -14,8 +14,6 @@ void Brake_TIM1( uint8_t drive);
 void setSpeed_TIM1(int16_t speed, uint8_t drive);
 
 void TIM2_pwm_init() ;
-void Brake( uint8_t drive);
-void setSpeed(int16_t speed, uint8_t drive);
 
 void Brake( uint8_t drive);
 void SetSpeed(int16_t speed, uint8_t drive);

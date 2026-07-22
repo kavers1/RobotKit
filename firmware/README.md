@@ -172,3 +172,25 @@ if CCR > ARR then out is always 0
 |      | TIM1 CCR2 = ARATRLRR + 1   | TIM1 CCR4 = ATRLR + 1   |
 
 similar for DRV3/DRV4 but with TIM2
+
+
+##Test code
+
+from machine import I2C, Pin
+i2c_bus = I2C(0, sda=Pin(9), scl=Pin(18), freq=100000)
+i2c_bus.scan()
+
+returns : 
+badge alone
+[21,106] dec
+[15,6A] hex 
+15 = LCD
+6A = Accelero
+[21, 33, 64, 94, 106, 112] dec
+[15, 21, 40, 5E, 6A, 70] hex
+
+21 =
+40 = PWM
+
+5E = CH32X035
+70

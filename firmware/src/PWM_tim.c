@@ -130,7 +130,7 @@ void SetSpeed(int16_t speed, int8_t drive){
 	}
 }
 
-void Brake_TIM1(int8_t drive){
+/*void Brake_TIM1(int8_t drive){
 	// output 00 to the 2 control pins of the DRV8847
 	if (drive == 1){
 		TIM_SetCompare1(TIM1, period + 1);
@@ -143,6 +143,10 @@ void Brake_TIM1(int8_t drive){
 }
 
 void setSpeed_TIM1(int16_t speed, int8_t drive){
+	// limit speed to boundary
+	if (speed > period) speed = period;
+	if (speed < -period) speed = -period;
+
 	if (drive == 1){
 		// FORWARD output 10 to the control pins. pin1 is PWM controled for speed adjustment
 		if (speed >0){
@@ -178,7 +182,7 @@ void setSpeed_TIM1(int16_t speed, int8_t drive){
 			TIM_SetCompare4(TIM1, speed);
 		}
 	}
-}
+}*/
 
 // TODO where is this used ? 
 
@@ -196,36 +200,36 @@ void TIM2_pwm_init() {
 	// Enable TIM1 clock
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
-  //Timer pin config
-  GPIO_InitTypeDef GPIO_InitStructure = {0};
+	//Timer pin config
+	GPIO_InitTypeDef GPIO_InitStructure = {0};
 	GPIO_InitStructure.GPIO_Pin = TIM2_PWM_PIN1 | TIM2_PWM_PIN2 | TIM2_PWM_PIN3 | TIM2_PWM_PIN4;
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_PP; //alternate function, PP: push-pull
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
 	GPIO_Init(GPIOA, &GPIO_InitStructure);    
 	
 	TIM_Cmd(TIM2, DISABLE); //Disable timer before (re)configuring it
-  TIM_OCInitTypeDef TIM_OCInitStructure = {0};
-  TIM_TimeBaseInitTypeDef TIM_TimeBaseInitStructure = {0};
+	TIM_OCInitTypeDef TIM_OCInitStructure = {0};
+	TIM_TimeBaseInitTypeDef TIM_TimeBaseInitStructure = {0};
 
 	// Timer base configuration
 	TIM_TimeBaseInitStructure.TIM_Period = period-1; //Auto-Reload Register (counter's max value before overflowing)
-  TIM_TimeBaseInitStructure.TIM_Prescaler = 1; //Prescaler - Main clock's divider
-  TIM_TimeBaseInitStructure.TIM_ClockDivision = TIM_CKD_DIV1; //No clock division
-  TIM_TimeBaseInitStructure.TIM_CounterMode = TIM_CounterMode_Up; //Counting upwards
-  TIM_TimeBaseInit(TIM2, &TIM_TimeBaseInitStructure);
+  	TIM_TimeBaseInitStructure.TIM_Prescaler = 1; //Prescaler - Main clock's divider
+	TIM_TimeBaseInitStructure.TIM_ClockDivision = TIM_CKD_DIV1; //No clock division
+	TIM_TimeBaseInitStructure.TIM_CounterMode = TIM_CounterMode_Up; //Counting upwards
+	TIM_TimeBaseInit(TIM2, &TIM_TimeBaseInitStructure);
 
-  TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM1; //PWM
-  TIM_OCInitStructure.TIM_OutputState = TIM_OutputState_Enable; //PWM is also directed to a physical pin
-  TIM_OCInitStructure.TIM_Pulse = period/4; //Capture-compare register (PWM changes the OCPolarity when counter reaches this value)
-  TIM_OCInitStructure.TIM_OCPolarity = TIM_OCPolarity_High; //PWM is high when the counter starts at 0
-  TIM_OC1Init(TIM2, &TIM_OCInitStructure);
+	TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM1; //PWM
+	TIM_OCInitStructure.TIM_OutputState = TIM_OutputState_Enable; //PWM is also directed to a physical pin
+	TIM_OCInitStructure.TIM_Pulse = period/4; //Capture-compare register (PWM changes the OCPolarity when counter reaches this value)
+	TIM_OCInitStructure.TIM_OCPolarity = TIM_OCPolarity_High; //PWM is high when the counter starts at 0
+	TIM_OC1Init(TIM2, &TIM_OCInitStructure);
 	TIM_OC3Init(TIM2, &TIM_OCInitStructure);
 	
 	TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM1; //PWM
-  TIM_OCInitStructure.TIM_OutputState = TIM_OutputState_Enable; //PWM is also directed to a physical pin
-  TIM_OCInitStructure.TIM_Pulse = period/4; //Capture-compare register (PWM changes the OCPolarity when counter reaches this value)
-  TIM_OCInitStructure.TIM_OCPolarity = TIM_OCPolarity_High; //PWM is high when the counter starts at 0
-  TIM_OC2Init(TIM2, &TIM_OCInitStructure);
+	TIM_OCInitStructure.TIM_OutputState = TIM_OutputState_Enable; //PWM is also directed to a physical pin
+	TIM_OCInitStructure.TIM_Pulse = period/4; //Capture-compare register (PWM changes the OCPolarity when counter reaches this value)
+	TIM_OCInitStructure.TIM_OCPolarity = TIM_OCPolarity_High; //PWM is high when the counter starts at 0
+	TIM_OC2Init(TIM2, &TIM_OCInitStructure);
 	TIM_OC4Init(TIM2, &TIM_OCInitStructure);
 	
 	//! REQUIRED: Channel 1/2 PWM configuration
@@ -239,13 +243,13 @@ void TIM2_pwm_init() {
 	TIM_ARRPreloadConfig(TIM2, ENABLE);
   	
 	TIM_CtrlPWMOutputs(TIM2, ENABLE);
-  TIM_ARRPreloadConfig(TIM2, ENABLE);
+  	TIM_ARRPreloadConfig(TIM2, ENABLE);
 
 	TIM_Cmd(TIM2, ENABLE);
 	PRINT("TIM2 PWM initialized\r\n");
 }
 
-void Brake_TIM2(int8_t drive){
+/*void Brake_TIM2(int8_t drive){
 	// output 00 to the 2 control pins of the DRV8847
 	if (drive == 1){
 		TIM_SetCompare1(TIM2, period + 1);			// speed setpoint where period = full speed
@@ -293,4 +297,4 @@ void setSpeed_TIM2(int16_t speed, int8_t drive){
 			TIM_SetCompare4(TIM2, speed);
 		}
 	}
-}
+}*/
